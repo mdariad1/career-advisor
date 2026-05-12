@@ -1,0 +1,822 @@
+\chapter{Solution Design}
+\label{ch:solution-design}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Functional and Non-Functional Requirements}
+\label{sec:requirements}
+
+\subsection*{Functional Requirements}
+
+\begin{description}
+
+\item[FR-1] The system shall allow users to register, authenticate, and access
+a personal dashboard displaying their assessment history and current profile.
+
+\item[FR-2] The system shall administer three distinct assessment types:
+aptitude tests (multiple-choice, auto-scored), Big Five personality scales
+(Likert sliders), and open-ended reflective questions (free text).
+
+\item[FR-3] For open-text responses, the system shall apply NLP processing ---
+including tokenisation, lemmatisation, and BERT-based semantic embedding ---
+to extract thematic vectors that contribute to the user's vocational profile.
+
+\item[FR-4] The system shall generate a career match score for each candidate
+occupation using an explicit, transparent weighted formula:
+%
+\begin{equation}
+  \text{score}(c,\,u)
+  \;=\;
+  w_1 \cdot \text{aptitude}(u)
+  \;+\; w_2 \cdot \text{personality\_fit}(c,u)
+  \;+\; w_3 \cdot \text{nlp\_similarity}(c,u)
+  \;+\; w_4 \cdot \text{market\_demand}(c)
+  \label{eq:score}
+\end{equation}
+%
+where weights are initialised at $(w_1, w_2, w_3, w_4) = (0.25,\,0.30,\,0.25,\,0.20)$,
+must sum to $1.0$, and are constrained to the range $[0.05,\,0.50]$ per weight.
+
+\item[FR-5] Each recommendation shall be accompanied by a SHAP-style factor
+decomposition showing each weight's percentage contribution to the final score,
+expressed in plain language (e.g.\ \emph{``Recommended primarily due to high
+Conscientiousness score and strong market demand in this sector''}).
+
+\item[FR-6] Users shall be able to accept or reject each recommendation.
+Accepted recommendations shall trigger an incremental weight update: the weight
+of the highest-contributing factor for that recommendation is increased by a
+learning rate $\alpha = 0.025$, followed by re-normalisation across all weights.
+
+\item[FR-7] The system shall periodically query the JobDataPool API
+(\texttt{GET /v1/jobs}, filtered by industry and country code) to maintain an
+up-to-date job listings cache. Job listings shall be displayed in the user
+dashboard, matched against the user's top recommended career categories.
+
+\item[FR-8] An administrative bias audit module shall compute and display
+fairness metrics --- including disparate impact ratio and equal opportunity
+scores --- across four protected attributes: gender, age group, field of study,
+and socioeconomic background. These attributes shall be collected at onboarding
+but excluded from the scoring formula.
+
+\end{description}
+
+\subsection*{Non-Functional Requirements}
+
+\begin{description}
+
+\item[NFR-1] The API shall respond within 800\,ms for standard operations;
+NLP inference for open-text responses may take up to 1\,500\,ms and shall be
+handled asynchronously with a progress indicator.
+
+\item[NFR-2] All user data shall be encrypted at rest (AES-256) and in transit
+(TLS~1.3). Passwords shall be hashed with bcrypt (cost factor $\geq 12$).
+
+\item[NFR-3] The recommendation formula, weight values, and factor contributions
+shall be visible to the user at all times. No output shall be presented without
+an accompanying explanation.
+
+\item[NFR-4] The interface shall comply with WCAG~2.1~AA accessibility
+standards and be responsive across desktop and mobile devices.
+
+\item[NFR-5] The system shall support a minimum of 10\,000 concurrent users
+through stateless horizontal scaling of the FastAPI backend.
+
+\item[NFR-6] The bias audit module shall flag any demographic group whose
+disparate impact ratio falls below 0.80 (the standard \emph{four-fifths rule})
+and generate a written alert for administrative review.
+
+\end{description}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Design Objectives}
+\label{sec:design-objectives}
+
+The platform is designed around six primary objectives, each traceable to the
+requirements established in Section~\ref{sec:requirements} and each reflecting
+a deliberate response to the limitations identified in existing career guidance
+systems.
+
+\paragraph{DO-1 --- Transparent, auditable scoring.}
+The recommendation engine shall expose its internal logic completely. The
+weighted formula~\eqref{eq:score} is not an implementation detail but a
+user-facing feature: weights are displayed, their current values are shown, and
+the contribution of each factor to every recommendation is broken down
+explicitly (FR-5). This objective directly addresses the black-box criticism
+levelled at systems such as Jobiri and C3-IoC, where users receive
+recommendations with no insight into why those recommendations were generated.
+Transparency is a design constraint, not an optional layer added afterward.
+
+\paragraph{DO-2 --- Selective application of NLP.}
+Natural language processing is computationally expensive and introduces
+interpretability challenges. It shall therefore be applied only where linguistic
+ambiguity genuinely exists. Aptitude MCQ scoring and Big Five personality
+scaling are deterministic operations that require no NLP. NLP is reserved for
+two components: semantic analysis of open-text reflective responses (using BERT
+embeddings and thematic classification trained on the Q\&A dataset), and skill
+normalisation in job matching (mapping free-form skill terms from job listings
+to canonical skill labels in the user profile).
+
+\paragraph{DO-3 --- A learning system, not a static one.}
+The recommendation model shall improve over time through an explicit feedback
+loop (FR-6). When a user accepts a recommendation, the weight of the
+highest-contributing scoring factor is nudged upward by $\alpha = 0.025$ and
+the weight vector is re-normalised. Over many users, this mechanism allows the
+weight vector to converge toward empirically validated distributions rather than
+relying on manually initialised defaults. The feedback mechanism is visible:
+users can observe weight values change in response to their choices.
+
+\paragraph{DO-4 --- Fairness as a first-class property.}
+Four protected demographic attributes are collected at onboarding: gender, age
+group, field of study, and socioeconomic background. These are architecturally
+isolated --- stored in a separate collection, never passed to the scoring
+pipeline, and used exclusively by the bias audit module (FR-8). The audit
+module computes disparate impact ratios and equal opportunity scores across all
+four axes, flagging violations of the four-fifths rule for administrative review
+(NFR-6). Fairness is designed into the data model from the beginning.
+
+\paragraph{DO-5 --- Live labour market grounding.}
+Career recommendations shall be connected to real, current job market data
+rather than static occupation databases. The JobDataPool API is queried
+periodically in a background sync job that populates a local MongoDB cache
+of job listings filtered by industry and country. This design separates the
+latency-sensitive recommendation pipeline from the network-dependent data
+collection process, ensuring the 800\,ms response target (NFR-1) is met while
+job data remains reasonably fresh.
+
+\paragraph{DO-6 --- Scalability and maintainability through modularity.}
+Each functional component --- assessment engine, NLP processor, recommendation
+engine, job aggregator, bias auditor --- is implemented as an independently
+deployable service in its own Docker container. This modular architecture
+allows individual components to be updated, replaced, or scaled horizontally
+without affecting the rest of the system (NFR-5). The NLP inference service,
+which has higher computational requirements, can be scaled independently of
+the lighter API routes.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{General Architecture of the Platform}
+\label{sec:architecture}
+
+The platform follows a modular, service-oriented architecture in which each
+functional concern is encapsulated in an independently deployable component.
+Components communicate over HTTP (REST) internally, are containerised via
+Docker, and are orchestrated through Kubernetes. This design reflects DO-6:
+any single component can be scaled, updated, or replaced without cascading
+changes to the rest of the system. The architecture is organised into six layers.
+
+\subsection*{Layer 1 --- Frontend (Vue.js + Tailwind CSS)}
+
+The client application handles all user-facing interactions: authentication,
+assessment delivery, results display, recommendation browsing, and the bias
+audit dashboard. Vue.js was selected over Angular for its lower configuration
+overhead and over React for its single-file component model, which keeps
+assessment logic, styling, and template co-located. Tailwind CSS handles
+responsive layout without a custom design system. The frontend communicates
+exclusively with the Backend API layer.
+
+Two views deserve specific mention. The \emph{Recommendation Dashboard} renders
+both the ranked career list and the live weight panel (DO-1), pulling the
+current weight vector from the backend on every load so that feedback-driven
+changes are always reflected. The \emph{Bias Audit View} is a read-only
+reporting interface that queries a dedicated audit endpoint, keeping audit data
+flow separate from the recommendation data flow.
+
+\subsection*{Layer 2 --- Backend API (FastAPI, Python)}
+
+The central orchestration layer. FastAPI was chosen for its native async
+support, automatic OpenAPI/Swagger documentation generation, and performance
+characteristics comparable to Node.js. It exposes the following route groups:
+
+\begin{itemize}
+  \item \texttt{/auth} --- registration, login, JWT issuance and refresh
+  \item \texttt{/survey} --- assessment session management, answer submission,
+        auto-scoring for MCQ types
+  \item \texttt{/profile} --- retrieval of the user's aggregated psychometric
+        profile and current weight vector
+  \item \texttt{/recommendations} --- career match score computation, SHAP
+        breakdown generation, recommendation retrieval
+  \item \texttt{/feedback} --- acceptance and rejection event ingestion, weight
+        update triggering
+  \item \texttt{/jobs} --- querying the local job listings cache with skill and
+        location filters
+  \item \texttt{/audit} --- bias metric computation and report retrieval
+        (admin-only, JWT role check)
+\end{itemize}
+
+The backend does not run NLP inference directly. Open-text responses are
+forwarded asynchronously to the NLP Service (Layer~3) and results are stored
+in MongoDB before the recommendation pipeline reads them.
+
+\subsection*{Layer 3 --- NLP Service (HuggingFace Transformers + scikit-learn + NLTK)}
+
+A dedicated Python microservice responsible for all language processing tasks.
+It is the only component with a GPU dependency and is therefore scaled
+independently. It exposes two internal endpoints:
+
+\begin{itemize}
+  \item \texttt{/embed} --- accepts raw open-text input, returns a BERT
+        embedding vector using \texttt{sentence-transformers/all-MiniLM-L6-v2}
+  \item \texttt{/classify} --- applies a trained SVM classifier over the
+        embedding to assign thematic labels used in career matching
+\end{itemize}
+
+NLTK handles preprocessing before the transformer model. Scikit-learn hosts
+the lightweight classifiers operating on the embeddings. The NLP Service is
+called only when open-text responses are present or when skill normalisation
+is required for job listing data.
+
+\subsection*{Layer 4 --- Recommendation and Explanation Engine}
+
+Logically part of the backend but described separately because it encompasses
+the three core improvements of this work. It consists of three tightly coupled
+components: the \emph{Scoring Module} (implements formula~\eqref{eq:score}),
+the \emph{SHAP Explanation Module} (computes per-factor contribution
+percentages), and the \emph{Feedback and Weight Update Module} (handles
+incremental learning). These are described in full in
+Section~\ref{sec:modules}.
+
+\subsection*{Layer 5 --- Job Data Sync (JobDataPool API + Python scheduler)}
+
+A background service that runs on a configurable schedule (default: every six
+hours) and queries the JobDataPool API (\texttt{GET /v1/jobs}, base URL
+\texttt{https://api.jobdatapool.com}) filtered by industry and country code.
+Retrieved listings are normalised via the NLP Service skill normalisation
+pipeline and stored in a MongoDB \texttt{jobs\_snapshot} collection. The rate
+limit of 30 requests per 60-second window is respected by introducing a
+2-second delay between industry queries within a single sync cycle.
+
+\subsection*{Layer 6 --- Data Layer (MongoDB)}
+
+MongoDB stores all persistent state: user profiles, assessment results, NLP
+analysis outputs, weight vectors, recommendation history, job listings cache,
+feedback events, session tokens for refresh-token revocation, and bias audit
+snapshots. The document-oriented model accommodates the heterogeneous structure
+of assessment responses without requiring schema migrations as new test types
+are introduced.
+
+\begin{figure}[h]
+  \centering
+  % Insert architecture diagram here (generated from Section 3.3 design)
+  \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}
+    Figure 3.1: General architecture diagram\\
+    (Vue.js Frontend $\rightarrow$ FastAPI Backend $\rightarrow$
+    NLP Service / Recommendation Engine / Job Sync $\rightarrow$ MongoDB)
+  \vspace{2cm}}}
+  \caption{General architecture of the platform.}
+  \label{fig:architecture}
+\end{figure}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Functional Modules}
+\label{sec:modules}
+
+\subsection*{Module 1 --- User Management}
+
+Users register with a valid email address and a password hashed using bcrypt
+(cost factor~12). On login, the backend issues a short-lived JWT access token
+(15-minute expiry) and a long-lived refresh token (7-day expiry) stored
+server-side in a \texttt{sessions} collection, enabling session continuity
+with the ability to revoke sessions explicitly.
+
+The user document in MongoDB stores two logically separate categories of data.
+The first is the \emph{psychometric profile}: aptitude scores, Big Five
+personality vector, NLP thematic labels, and the current weight vector. The
+second is the \emph{demographic profile}: gender, age group, field of study,
+and socioeconomic background. These two categories are stored in separate
+MongoDB collections --- \texttt{users} and \texttt{user\_demographics} --- and
+joined only within the bias audit pipeline. The recommendation engine reads
+exclusively from \texttt{users}, enforcing at the data layer the guarantee that
+protected attributes never influence scoring.
+
+Users may request full account deletion at any time, triggering cascade removal
+from both collections in compliance with GDPR Article~17.
+
+\subsection*{Module 2 --- Assessment Engine}
+
+The assessment engine delivers three test types, each with a distinct scoring
+mechanism. The key design principle is that scoring complexity matches the
+nature of the input --- no NLP is applied where deterministic scoring suffices.
+
+\paragraph{Aptitude tests (MCQ).}
+Two datasets supply the question bank: the ScienceQA dataset (HuggingFace) for
+scientific reasoning, geography, and language questions, and the Engineering
+Aptitude dataset (Kaggle) for numerical and logical-mathematical reasoning.
+Both datasets are exclusively multiple-choice with integer answer indices.
+Scoring is deterministic:
+%
+\begin{equation}
+  \text{aptitude\_score}(u)
+  \;=\;
+  \frac{\text{correct\_answers}}{\text{total\_questions}} \times 100
+  \label{eq:aptitude}
+\end{equation}
+%
+No NLP is involved. The result is a single normalised integer in $[0, 100]$
+that feeds directly into formula~\eqref{eq:score} as the aptitude factor.
+
+\paragraph{Big Five personality scales.}
+Each of the five OCEAN dimensions is presented as a labelled slider. The user's
+position is recorded as a float in $[0, 1]$. Scoring is deterministic --- the
+slider value is the score. The five values form the personality vector
+$[O, C, E, A, N]$, used in career-personality matching via cosine similarity
+against pre-computed career archetype vectors derived from the OCEAN dataset.
+No NLP is involved.
+
+\paragraph{Open-text reflective questions.}
+The only assessment type requiring NLP processing. The user's free-text
+response is passed to the NLP Service and returns as a thematic embedding
+vector and a set of classified labels stored in the \texttt{nlp\_analysis}
+collection. Submission is handled asynchronously: the frontend shows a
+progress indicator while the backend awaits the NLP Service response.
+
+\subsection*{Module 3 --- NLP Processing Service}
+
+The NLP Service processes two distinct inputs: open-text assessment responses
+and job listing skill fields from the JobDataPool sync. The processing pipeline
+consists of three stages.
+
+\paragraph{Stage 1 --- Preprocessing (NLTK).}
+Raw text is lowercased, tokenised, stripped of stopwords, and lemmatised.
+For open-text responses this reduces noise from grammatical variation. For
+job skill strings it additionally handles tokenisation of compound terms.
+
+\paragraph{Stage 2 --- Semantic embedding (HuggingFace Transformers).}
+The preprocessed text is passed to
+\texttt{sentence-transformers/all-MiniLM-L6-v2}, producing a 384-dimensional
+dense vector. This model is chosen over \texttt{bert-base-uncased} for two
+reasons: it runs inference approximately four times faster, and its
+sentence-level training objective is more appropriate for paragraph-length
+inputs. For the prototype scope, MiniLM provides an acceptable
+accuracy-latency trade-off.
+
+\paragraph{Stage 3 --- Thematic classification (scikit-learn SVM).}
+The 384-dimensional embedding is passed to an SVM classifier trained on the
+Q\&A dataset (Kaggle). The classifier assigns one or more thematic labels from
+a predefined taxonomy: \texttt{analytical}, \texttt{creative},
+\texttt{interpersonal}, \texttt{technical}, \texttt{leadership},
+\texttt{structured}. These labels, together with the raw embedding vector, are
+stored in \texttt{nlp\_analysis} and used downstream in two ways: the embedding
+feeds into career similarity scoring, and the labels feed into SHAP explanation
+generation.
+
+\paragraph{Skill normalisation (job matching only).}
+When processing job listing skill fields from JobDataPool, the NLP Service
+additionally maps free-form skill terms to a canonical skill vocabulary. For
+example, \emph{pandas}, \emph{data wrangling}, and \emph{dataframe
+manipulation} are all mapped to the canonical label \emph{Data Analysis}. This
+enables meaningful matching between user profile labels and job skill
+requirements without relying on exact string matching.
+
+\subsection*{Module 4 --- Recommendation and Explanation Engine}
+
+\paragraph{4a --- Weighted Scoring.}
+Career match scores are computed using formula~\eqref{eq:score}. The four
+factor functions are defined as follows:
+
+\begin{itemize}
+  \item $\text{aptitude}(u)$ --- the user's normalised aptitude score in
+        $[0, 1]$
+  \item $\text{personality\_fit}(c, u)$ --- cosine similarity between the
+        user's OCEAN vector and the archetype OCEAN vector for career $c$,
+        mapped to $[0, 1]$
+  \item $\text{nlp\_similarity}(c, u)$ --- cosine similarity between the
+        user's NLP embedding vector and the centroid embedding vector for
+        career $c$, computed from training examples in the Q\&A dataset
+  \item $\text{market\_demand}(c)$ --- a normalised signal derived from the
+        frequency and recency of job listings for career $c$ in the
+        JobDataPool cache, scaled to $[0, 1]$
+\end{itemize}
+
+Weights are initialised at $(w_1, w_2, w_3, w_4) = (0.25,\,0.30,\,0.25,\,0.20)$,
+constrained to $[0.05,\,0.50]$ per weight, and normalised to sum to $1.0$ at
+all times. The current weight vector is stored per user in the \texttt{weights}
+document and updated by the feedback component.
+
+\paragraph{4b --- SHAP-style Explanation.}
+Because the scoring model is a weighted linear sum, the contribution of each
+factor to the final score is analytically exact. The percentage contribution
+of factor $i$ to career $c$'s score is:
+%
+\begin{equation}
+  \text{contribution}_i(c, u)
+  \;=\;
+  \frac{w_i \cdot f_i(c, u)}{\text{score}(c, u)} \times 100
+  \label{eq:shap}
+\end{equation}
+%
+These four values sum to 100\% and are attached to each recommendation as a
+structured breakdown. A plain-language summary is generated alongside ---
+for example: \emph{``Recommended primarily due to strong personality fit
+(41\%) and high market demand in this sector (28\%). Your text responses
+showed strong analytical and technical orientation, contributing 22\% to
+this match.''}
+
+\paragraph{4c --- Incremental Weight Update (Feedback Loop).}
+When a user accepts recommendation $c^*$, the following update is applied:
+%
+\begin{align}
+  i^* &= \arg\max_i\; \text{contribution}_i(c^*, u)
+  \label{eq:argmax}\\
+  w_{i^*} &\leftarrow w_{i^*} + \alpha
+  \label{eq:update}\\
+  \mathbf{w} &\leftarrow \frac{\mathbf{w}}{\sum_j w_j}
+  \qquad \text{(re-normalisation)}
+  \label{eq:renorm}
+\end{align}
+%
+where $\alpha = 0.025$. When a user rejects a recommendation, no weight update
+is applied; the rejection event is logged in the \texttt{feedback} collection
+for aggregate analysis. The top five careers by score are returned, each with
+its SHAP breakdown, plain-language explanation, salary range, and matched live
+job listings.
+
+\subsection*{Module 5 --- Job Data Aggregation}
+
+This module replaces web scraping with a structured API integration. The
+JobDataPool API is queried by a Python background scheduler running as a
+separate containerised service. Queries are parameterised by industry and
+country code. Each sync cycle executes the following steps:
+
+\begin{enumerate}
+  \item For each industry in the platform's career taxonomy, issue a query to
+        \texttt{/v1/jobs?industries=\{industry\}\&country\_code=\{code\}\&limit=250}
+  \item Pass returned skill strings through the NLP Service skill normalisation
+        pipeline
+  \item Upsert normalised records into the \texttt{jobs\_snapshot} MongoDB
+        collection, keyed on \texttt{job\_id}
+  \item Record a sync timestamp; listings older than 14 days are marked stale
+        and excluded from dashboard queries
+\end{enumerate}
+
+The sync cycle runs every six hours. The rate limit of 30 requests per
+60-second window is respected by introducing a 2-second delay between industry
+queries within a single cycle.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Data Flow}
+\label{sec:dataflow}
+
+The platform operates across three concurrent data flows. They share the same
+MongoDB instance but are otherwise independent.
+
+\subsection*{Flow 1 --- Assessment to Recommendation}
+
+\begin{enumerate}
+  \item \textbf{Input collection.} The user completes the three assessment
+        types. MCQ answers and personality slider values are submitted to the
+        backend via \texttt{/survey/submit}. The open-text response is submitted
+        separately and flagged for NLP processing.
+
+  \item \textbf{Deterministic scoring.} The backend scores the aptitude MCQ
+        and records Big Five slider values directly. These results are persisted
+        to the \texttt{results} collection synchronously.
+
+  \item \textbf{Asynchronous NLP processing.} The open-text response is
+        forwarded to the NLP Service. The backend returns HTTP~202 to the
+        frontend, which displays a progress indicator. The NLP Service runs the
+        three-stage pipeline and writes the embedding vector and thematic labels
+        to \texttt{nlp\_analysis}.
+
+  \item \textbf{Profile assembly.} Once all inputs are scored, the backend
+        assembles the full user profile and persists it to \texttt{users}.
+
+  \item \textbf{Scoring and explanation.} The recommendation engine applies
+        formula~\eqref{eq:score} across all candidate careers, ranks the
+        results, computes SHAP breakdowns via equation~\eqref{eq:shap}, and
+        attaches matching job listings from \texttt{jobs\_snapshot}. The top
+        five results are persisted to \texttt{recommendations}.
+
+  \item \textbf{Delivery.} The frontend retrieves results via
+        \texttt{/recommendations} and renders the career list, SHAP
+        breakdowns, and weight panel.
+\end{enumerate}
+
+\subsection*{Flow 2 --- Feedback and Weight Update}
+
+\begin{enumerate}
+  \item \textbf{Event capture.} The user accepts or rejects a recommendation.
+        The frontend sends a POST to \texttt{/feedback}.
+
+  \item \textbf{Weight update (accept only).} The backend retrieves the stored
+        SHAP breakdown, identifies the highest-contributing factor, and applies
+        equations~\eqref{eq:update}--\eqref{eq:renorm}. The updated weight
+        vector is persisted to the \texttt{weights} document.
+
+  \item \textbf{Rejection logging.} If the action is a rejection, the event is
+        written to \texttt{feedback} with a timestamp and factor breakdown.
+
+  \item \textbf{Live weight refresh.} The updated weight vector is returned in
+        the API response. The frontend updates the weight panel immediately.
+\end{enumerate}
+
+\subsection*{Flow 3 --- Background Job Sync}
+
+\begin{enumerate}
+  \item \textbf{Scheduled trigger.} The Python scheduler fires every six hours
+        and iterates over the platform's career taxonomy.
+
+  \item \textbf{Skill normalisation.} Retrieved listings are passed through
+        the NLP Service skill normalisation pipeline.
+
+  \item \textbf{Cache upsert.} Normalised listings are upserted into
+        \texttt{jobs\_snapshot}. Listings older than 14 days are marked stale.
+
+  \item \textbf{Bias snapshot (on demand).} When an administrator triggers a
+        bias report via \texttt{/audit}, a read-only pipeline joins
+        \texttt{recommendations} with \texttt{user\_demographics}, computes
+        fairness metrics, and writes a snapshot to \texttt{bias\_audit}. This
+        join is the only point in the system where demographic data and
+        recommendation data are read together.
+\end{enumerate}
+
+\begin{figure}[h]
+  \centering
+  % Insert data flow diagram here (generated from Section 3.5 design)
+  \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}
+    Figure 3.2: Three concurrent data flows\\
+    (Flow 1: Assessment $\to$ Recommendation;\;
+     Flow 2: Feedback $\to$ Weight update;\;
+     Flow 3: Job sync $\to$ Cache)\\
+    Shared MongoDB at convergence point.
+  \vspace{2cm}}}
+  \caption{Concurrent data flows in the platform.}
+  \label{fig:dataflow}
+\end{figure}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Datasets Used}
+\label{sec:datasets}
+
+The platform draws on five open static datasets and one live API source. Each
+was selected to cover a specific functional component.
+
+\subsection{Dataset Overview and Integration Rationale}
+
+\begin{table}[h]
+\centering
+\caption{Data sources, roles, and processing modes.}
+\label{tab:datasets}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{p{3.4cm} p{1.5cm} p{2.6cm} p{1.5cm} p{3.6cm}}
+\hline
+\textbf{Source} & \textbf{Type} & \textbf{Module} & \textbf{NLP} & \textbf{Primary role} \\
+\hline
+ScienceQA (HuggingFace)
+  & Static & Assessment engine & No
+  & MCQ aptitude items --- science, geography, language \\
+Engineering Aptitude (Kaggle)
+  & Static & Assessment engine & No
+  & MCQ aptitude items --- numerical and logical reasoning \\
+Q\&A Dataset (Kaggle)
+  & Static & NLP service & Yes
+  & Trains the SVM thematic classifier \\
+OCEAN Big Five (HuggingFace)
+  & Static & Recommendation engine & No
+  & Derives career archetype personality vectors \\
+AI-Powered Job Market (Kaggle)
+  & Static & Recommendation engine & Partial
+  & Initialises market demand signals and career taxonomy \\
+JobDataPool API
+  & Live API & Job sync service & Partial
+  & Live job listings cache, refreshed every 6 hours \\
+\hline
+\end{tabular}
+\end{table}
+
+Three points in Table~\ref{tab:datasets} warrant explanation.
+
+First, the OCEAN dataset is marked as not requiring NLP. OCEAN scores are
+numerical self-reported values --- no language processing is needed. They are
+used to compute career archetype vectors: for each career category, the mean
+OCEAN vector across users in that occupation becomes the reference vector
+against which user profiles are compared via cosine similarity.
+
+Second, the AI-Powered Job Market Kaggle dataset and the JobDataPool API serve
+complementary rather than redundant roles. The Kaggle dataset is static and
+used at initialisation: it provides the career taxonomy, seeds the market
+demand signals used in formula~\eqref{eq:score}, and supplies training
+examples for the career matching component. JobDataPool is used at runtime:
+it provides live job listings and fresh market demand signals.
+
+Third, skill normalisation is listed as \emph{partial} NLP for both
+job-related sources. This refers specifically to the skill normalisation
+pipeline in the NLP service --- lightweight similarity matching, not full
+semantic embedding.
+
+\subsection{Per-Dataset Integration Detail}
+
+\paragraph{ScienceQA and Engineering Aptitude (MCQ datasets).}
+Both datasets supply the question bank for the aptitude assessment module.
+ScienceQA~\cite{scienceqa} covers scientific reasoning, geography, and
+language questions across grades 2--11 with 21\,264 items in total. All items
+are multiple-choice with a predetermined \texttt{choices} array and an integer
+\texttt{answer} index. Scoring is purely deterministic; no NLP is involved.
+The \texttt{lecture} and \texttt{solution} fields, unique to ScienceQA, are
+used to provide post-answer explanations, supporting the explainability
+objective (DO-1). Engineering Aptitude provides numerical sequences, spatial
+reasoning, and quantitative problem-solving items, complementing ScienceQA's
+science and language coverage.
+
+\paragraph{Q\&A Dataset (NLP classifier training).}
+Used offline to train the SVM thematic classifier. Items are question-answer
+pairs with sufficient textual content for reliable thematic labelling. The
+classifier is trained to assign labels from the vocational taxonomy
+(\texttt{analytical}, \texttt{creative}, \texttt{interpersonal},
+\texttt{technical}, \texttt{leadership}, \texttt{structured}) based on BERT
+embeddings. The trained classifier is serialised and loaded by the NLP service
+at startup.
+
+\paragraph{OCEAN Big Five Dataset.}
+Used in two ways. First, it calibrates the normalisation of slider values so
+that a score of $0.7$ on Conscientiousness corresponds to a meaningful
+percentile. Second, for occupational categories with sufficient representation
+($n \geq 30$), the mean OCEAN vector per occupation becomes the career
+archetype vector stored in \texttt{career\_archetypes}. For categories with
+$n < 30$, archetype vectors are initialised from published RIASEC-to-Big-Five
+mappings as a validated theoretical fallback.
+
+\paragraph{AI-Powered Job Market Dataset (Kaggle).}
+Provides the initial career taxonomy, seeds the market demand signals, and
+supplies training examples for career matching. Skill strings are passed
+through the NLP Service skill normalisation pipeline. Processed records seed
+the \texttt{career\_archetypes} and \texttt{jobs\_snapshot} collections at
+initialisation.
+
+\paragraph{JobDataPool API (live source).}
+Queried on a background schedule as described in Section~\ref{sec:modules}
+(Module~5). Populates and maintains \texttt{jobs\_snapshot} with current job
+listings and provides fresh market demand signals that periodically recalibrate
+the static initialisation values.
+
+\subsection{Preprocessing and Filtering}
+
+All static datasets undergo a common preprocessing pipeline before being loaded
+into the platform.
+
+\paragraph{MCQ datasets (ScienceQA and Engineering Aptitude).}
+Duplicate questions are removed by exact text match. For ScienceQA, items
+where \texttt{image} is not null are excluded (text-only subset), and items
+from grades below 7 are filtered out to match the university student target
+audience. The resulting question pool is serialised as a structured JSON array
+and stored in the \texttt{surveys} MongoDB collection at initialisation.
+ScienceQA's \texttt{lecture} and \texttt{solution} fields are preserved in the
+stored objects and returned to the frontend after the user submits an answer.
+
+\paragraph{Q\&A dataset.}
+Items shorter than 30 tokens after preprocessing are removed. The remaining
+items are lowercased, tokenised, and lemmatised via NLTK. Class balance across
+the six thematic labels is checked; overrepresented classes are downsampled to
+a maximum of $2\times$ the size of the smallest class. The balanced corpus is
+split 80/20 for training and validation.
+
+\paragraph{OCEAN dataset.}
+Responses with more than 20\% missing values are dropped. Remaining scores are
+normalised to $[0, 1]$ per dimension using min-max scaling. Occupational
+labels are standardised to a controlled vocabulary aligned with the career
+taxonomy. Archetype vectors are computed as per-occupation means with a minimum
+sample size of $n = 30$.
+
+\paragraph{AI-Powered Job Market dataset.}
+Duplicate listings are removed. Salary fields are parsed and normalised to
+annual EUR ranges; entries with unparseable salary fields are retained but
+flagged as salary-unknown. Skill strings are passed through the NLP Service
+skill normalisation pipeline. Processed records seed \texttt{career\_archetypes}
+and \texttt{jobs\_snapshot} at initialisation.
+
+\paragraph{JobDataPool API responses.}
+Handled at runtime by the job sync service. Skill normalisation,
+deduplication by \texttt{job\_id}, and stale-record pruning are applied on
+each sync cycle.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Technical Considerations}
+\label{sec:technical}
+
+\subsection{Performance}
+
+The primary performance target is NFR-1: API responses under 800\,ms for
+standard operations, with NLP inference allowed up to 1\,500\,ms handled
+asynchronously.
+
+\paragraph{MongoDB indexing strategy.}
+Compound indexes are defined at initialisation on the fields most commonly used
+in query filters: \texttt{user\_id} on \texttt{results}, \texttt{nlp\_analysis},
+\texttt{recommendations}, \texttt{weights}, and \texttt{feedback} collections;
+\texttt{industry} and \texttt{country\_code} on \texttt{jobs\_snapshot}; and
+\texttt{career\_id} on \texttt{career\_archetypes}.
+
+\paragraph{Asynchronous NLP handling.}
+The FastAPI backend issues HTTP~202 immediately upon receiving a text submission
+and delegates processing to the NLP Service. The frontend polls a status
+endpoint at 1-second intervals. This prevents BERT inference latency ---
+typically 400--900\,ms on CPU, under 200\,ms on GPU --- from blocking the
+main API thread.
+
+\paragraph{NLP result persistence.}
+Once computed, a user's NLP embedding and thematic labels are stored in
+\texttt{nlp\_analysis} and reused for all subsequent recommendation queries
+without re-inference. Re-embedding is only triggered if the user submits a
+new open-text response.
+
+\paragraph{Job sync decoupling.}
+The JobDataPool sync job runs as a separate containerised process. All
+user-facing job queries read from the local \texttt{jobs\_snapshot} cache,
+so external API latency has no effect on user-facing response times.
+
+\paragraph{BERT model selection.}
+At 22M parameters, \texttt{all-MiniLM-L6-v2} runs approximately four times
+faster than \texttt{bert-base-uncased} (110M parameters). On CPU inference
+this translates to roughly 80--120\,ms per embedding versus 400--600\,ms,
+making the 1\,500\,ms async budget achievable without GPU hardware in the
+prototype deployment.
+
+\subsection{Security}
+
+\paragraph{Authentication.}
+Passwords are hashed with bcrypt (cost factor~12). Authentication issues a
+short-lived JWT access token (15-minute expiry) and a long-lived refresh token
+(7-day expiry) stored server-side in \texttt{sessions} for explicit
+revocation. All tokens are transmitted over TLS~1.3.
+
+\paragraph{Data encryption at rest.}
+Sensitive fields --- hashed passwords, session tokens, and demographic data in
+\texttt{user\_demographics} --- are encrypted at the application layer using
+AES-256 before being written to MongoDB.
+
+\paragraph{Demographic data isolation.}
+The \texttt{user\_demographics} collection is accessible only through the
+\texttt{/audit} route group, which requires a verified admin role claim in the
+JWT. No other route joins or reads from this collection.
+
+\paragraph{Input validation.}
+All incoming request bodies are validated against Pydantic schemas at the
+FastAPI layer. String fields are length-bounded and sanitised, preventing
+injection attacks from reaching MongoDB or the NLP Service.
+
+\paragraph{Audit logging.}
+Every request to the \texttt{/auth}, \texttt{/recommendations},
+\texttt{/feedback}, and \texttt{/audit} route groups writes a log entry
+containing a timestamp, anonymised IP address (last octet zeroed), operation
+type, and HTTP status code. Logs are retained for 30 days.
+
+\subsection{Scalability and DevOps}
+
+\paragraph{Containerisation.}
+Each service runs in its own Docker container built from a minimal base image
+(\texttt{python:3.11-slim}). Services communicate over an internal Docker
+network; only the FastAPI backend exposes an external port.
+
+\paragraph{Horizontal scaling.}
+The FastAPI backend is stateless by design: all session state lives in MongoDB
+and JWT tokens carry no server-side state beyond the revocation list.
+Additional backend instances can be added behind a load balancer without
+session affinity requirements. The NLP Service can similarly be scaled
+horizontally.
+
+\paragraph{CI/CD pipeline.}
+A GitHub Actions workflow runs on every push to the main branch across four
+stages: syntax linting (flake8, ESLint), unit tests (pytest, Vitest), Docker
+image build, and deployment to the staging environment. A manual approval gate
+separates staging from production. Swagger documentation is auto-generated and
+published as a build artefact on every successful run.
+
+\paragraph{Database backup.}
+MongoDB performs incremental backups daily, retained for 14 days. A full
+restore is tested monthly and documented to complete within 30 minutes. Backup
+files are encrypted using the same AES-256 key used at the application layer.
+
+\subsection{Known Technical Constraints}
+
+\paragraph{NLP classifier accuracy is bounded by training data.}
+The SVM thematic classifier is trained on the Q\&A Kaggle dataset, which
+covers general question-answering content and has not been trained on
+career-specific language. Users whose open-text responses use domain-specific
+vocabulary outside the training distribution may receive less accurate thematic
+classifications. Retraining on accumulated platform-specific open-text
+responses is the intended mitigation, listed as a future development direction
+in Section~\ref{ch:conclusions}.
+
+\paragraph{Career archetype vectors are partially theory-derived.}
+For career categories with fewer than 30 OCEAN-labelled examples, archetype
+vectors fall back to published RIASEC-to-Big-Five mappings. These mappings are
+well-validated in the literature but introduce a degree of theoretical
+approximation where empirical data is sparse.
+
+\paragraph{Weight initialisation is not empirically calibrated.}
+The default weight vector $(0.25,\,0.30,\,0.25,\,0.20)$ is initialised based
+on the relative theoretical importance of each factor in the career counselling
+literature rather than from optimisation on labelled outcome data. The feedback
+loop is designed to correct this over time, but in early deployment --- before
+sufficient feedback has accumulated --- recommendation quality depends on these
+initial values being reasonable rather than optimal.
+
+\paragraph{JobDataPool coverage is not exhaustive.}
+For niche or highly specialised career categories, listing volumes may be
+insufficient to produce reliable market demand signals. In these cases the
+market demand factor defaults to the static initialisation value from the
+Kaggle job market dataset.
+
+\paragraph{Algorithmic bias has not been formally evaluated in this prototype.}
+The bias audit module computes and reports fairness metrics, but no corrective
+intervention has been implemented. Detected disparities are flagged for
+administrative review but do not trigger automatic model adjustment.
+Implementing bias mitigation interventions is identified as a priority future
+development direction in Section~\ref{ch:conclusions}.

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m pytest tests/backend/test_connection.py -v --tb=short)",
+      "Bash(python3 -m pip install \"pydantic[email]\")",
+      "Bash(curl -s https://api.ipify.org)"
+    ]
+  }
+}

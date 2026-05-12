@@ -1,0 +1,36 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# NLP model weights — download separately
+nlp_service/models/*.bin
+nlp_service/models/*.safetensors
+nlp_service/models/pytorch_model*
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# IDE
+.idea/
+.vscode/settings.json
+*.iml
+
+# Data files — reference only, not stored in repo
+data/
+*.parquet
+*.csv
+
+# Docker
+docker-compose.override.yml

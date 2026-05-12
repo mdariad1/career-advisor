@@ -1,0 +1,150 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Stage 1: Lint ───────────────────────────────────────────────────────────
+  lint-python:
+    name: Python lint (flake8)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install flake8
+        run: pip install flake8
+      - name: Lint backend
+        run: flake8 backend/app/ --max-line-length=100
+      - name: Lint nlp_service
+        run: flake8 nlp_service/app/ --max-line-length=100
+      - name: Lint job_sync
+        run: flake8 job_sync/app/ --max-line-length=100
+
+  lint-frontend:
+    name: Frontend lint (ESLint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+
+  # ── Stage 2: Unit tests ─────────────────────────────────────────────────────
+  test-backend:
+    name: Backend tests (pytest)
+    runs-on: ubuntu-latest
+    needs: lint-python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt pytest
+      - name: Run tests
+        run: python -m pytest tests/backend -v
+        env:
+          MONGO_URI: mongodb://localhost:27017/career_db_test
+          JWT_SECRET: ci-secret
+          JWT_REFRESH_SECRET: ci-refresh-secret
+          NLP_SERVICE_URL: http://localhost:8001
+
+  test-nlp:
+    name: NLP service tests (pytest)
+    runs-on: ubuntu-latest
+    needs: lint-python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r nlp_service/requirements.txt pytest
+      - name: Run tests
+        run: python -m pytest tests/nlp -v
+        env:
+          MONGO_URI: mongodb://localhost:27017/career_db_test
+
+  test-frontend:
+    name: Frontend tests (Vitest)
+    runs-on: ubuntu-latest
+    needs: lint-frontend
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run test
+
+  # ── Stage 3: Docker build ───────────────────────────────────────────────────
+  docker-build:
+    name: Docker image build
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-nlp, test-frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: false
+          tags: career-advisor/backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build nlp_service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./nlp_service
+          push: false
+          tags: career-advisor/nlp_service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build job_sync
+        uses: docker/build-push-action@v5
+        with:
+          context: ./job_sync
+          push: false
+          tags: career-advisor/job_sync:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: false
+          tags: career-advisor/frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Stage 4: Deploy to staging (main branch only) ───────────────────────────
+  deploy-staging:
+    name: Deploy to staging
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: staging
+      url: https://staging.career-advisor.example.com
+    steps:
+      - name: Deploy (stub — configure for your infrastructure)
+        run: echo "Deploy step — configure SSH/kubectl/helm here"
