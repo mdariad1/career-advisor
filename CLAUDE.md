@@ -26,6 +26,10 @@ data. Architecture and design decisions are fully documented in chapter3.tex.
 users, user_demographics, results, nlp_analysis, weights, recommendations,
 jobs_snapshot, feedback, sessions, career_archetypes, surveys, bias_audit
 
+All 12 collections have indexes defined in `backend/app/database.py::ensure_indexes()`.
+Called at app startup (lifespan) and in test setup — this replaces the Docker init script
+for Atlas, where collections are created lazily.
+
 ## NLP model
 sentence-transformers/all-MiniLM-L6-v2 (384-dim embeddings)
 SVM classifier trained on Q&A Kaggle dataset
@@ -51,5 +55,35 @@ JOBDATAPOOL_API_KEY, SYNC_INTERVAL_HOURS, TARGET_COUNTRY_CODE
 - Frontend: Vitest (frontend/src/__tests__/)
 - Run all: make test
 
+## MongoDB connection notes
+- Use direct replica-set URI, NOT `mongodb+srv://` — SRV resolution is broken with Motor on Python 3.13
+- URI format: `mongodb://user:pass@host1:27017,host2:27017,host3:27017/career_db?authSource=admin&replicaSet=...&tls=true`
+- The replica set name and hosts can be resolved from DNS: `nslookup -type=SRV _mongodb._tcp.<cluster>.mongodb.net`
+- `uuidRepresentation="standard"` is required in `AsyncIOMotorClient` kwargs
+
+## Pydantic models
+All 13 document models live in `backend/app/models/`. They extend `MongoModel` (from `common.py`),
+which provides `PyObjectId`, `model_dump_mongo()`, and `ConfigDict(populate_by_name=True)`.
+Use `datetime.now(UTC)` via `default_factory=lambda: datetime.now(UTC)` — never `datetime.utcnow`.
+
+## Testing notes
+- `pytest.ini` sets `asyncio_mode=auto` and `asyncio_default_test_loop_scope=session`
+- Session scope is critical — Motor binds to the creating event loop; tests share one loop
+- `tests/backend/conftest.py` inserts `../../backend` into `sys.path`
+- Atlas creates collections lazily; call `ensure_indexes()` before `list_collection_names()` in tests
+
 ## Current status
-[ ] Update this section as development progresses
+[x] Project scaffold — all four services, Docker, Makefile, GitHub Actions CI
+[x] MongoDB connection layer — Motor client, ensure_indexes(), typed collection accessors
+[x] Pydantic v2 document models — all 13 collections modelled
+[x] FastAPI app factory with lifespan (ping + ensure_indexes at startup)
+[x] Router stubs — /auth, /survey, /profile, /recommendations, /feedback, /jobs, /audit
+[x] Frontend skeleton — Vue 3 + Tailwind, router, Pinia stores (auth, user), axios client
+[x] Frontend views — Login, Register, Dashboard, Assessment (3-step), Recommendations, Jobs, Audit
+[x] Frontend components — AppNav, WeightPanel, ShapBreakdown
+[x] Live Atlas connectivity tests — 6/6 passing
+[ ] Business logic — router endpoints not yet implemented (raise NotImplementedError)
+[ ] NLP service — embed + classify endpoints stubbed, model loading not implemented
+[ ] Job sync — APScheduler + JobDataPool API integration not implemented
+[ ] Frontend ↔ backend integration — views wired to real API calls
+[ ] NLP SVM classifier training pipeline
