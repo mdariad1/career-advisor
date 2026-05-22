@@ -67,8 +67,11 @@ which provides `PyObjectId`, `model_dump_mongo()`, and `ConfigDict(populate_by_n
 Use `datetime.now(UTC)` via `default_factory=lambda: datetime.now(UTC)` — never `datetime.utcnow`.
 
 ## Testing notes
-- `pytest.ini` sets `asyncio_mode=auto` and `asyncio_default_test_loop_scope=session`
-- Session scope is critical — Motor binds to the creating event loop; tests share one loop
+- `pytest.ini` sets `asyncio_mode=auto`, `asyncio_default_test_loop_scope=session`, `asyncio_default_fixture_loop_scope=session`
+- Both scopes must be `session` — Motor binds to the creating event loop; fixtures in a different loop cause "Future attached to a different loop" errors
+- HTTP integration tests use `httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test")` — NOT Starlette's sync `TestClient` (which spawns its own anyio loop)
+- Session-scoped `client` fixtures share one Motor client across all tests; function-scoped `cleanup_*` fixtures must depend on `client` to guarantee ordering
+- Each JWT must include a `jti` (random hex nonce) — tokens issued within the same second are otherwise identical, causing `DuplicateKeyError` on the `sessions.token_hash` unique index
 - `tests/backend/conftest.py` inserts `../../backend` into `sys.path`
 - Atlas creates collections lazily; call `ensure_indexes()` before `list_collection_names()` in tests
 
@@ -82,7 +85,8 @@ Use `datetime.now(UTC)` via `default_factory=lambda: datetime.now(UTC)` — neve
 [x] Frontend views — Login, Register, Dashboard, Assessment (3-step), Recommendations, Jobs, Audit
 [x] Frontend components — AppNav, WeightPanel, ShapBreakdown
 [x] Live Atlas connectivity tests — 6/6 passing
-[ ] Business logic — router endpoints not yet implemented (raise NotImplementedError)
+[x] Auth layer — /auth/register, /login, /refresh, /logout, /me implemented and tested (11/11)
+[ ] Business logic — /survey, /profile, /recommendations, /feedback, /jobs, /audit not yet implemented
 [ ] NLP service — embed + classify endpoints stubbed, model loading not implemented
 [ ] Job sync — APScheduler + JobDataPool API integration not implemented
 [ ] Frontend ↔ backend integration — views wired to real API calls
