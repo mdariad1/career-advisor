@@ -98,9 +98,11 @@ Use `datetime.now(UTC)` via `default_factory=lambda: datetime.now(UTC)` — neve
     - Aptitude MCQ scoring (deterministic, updates users.aptitude_score)
     - Personality OCEAN scoring (Likert → [O,C,E,A,N] vector, updates users.ocean_vector)
     - Open-text ingestion (NlpAnalysisDocument created, NLP service called async, graceful fallback)
-[ ] Business logic — /profile, /recommendations, /feedback, /jobs, /audit not yet implemented
-    [ ] /profile GET — aggregate psychometric profile + weights from users collection
-    [ ] /profile/weights GET — return per-user WeightVector
+[x] Profile layer — /profile, /profile/weights, DELETE /profile implemented and tested (9/9)
+    - GET /profile: unified psychometric profile (aptitude_score, ocean_vector, nlp_labels, weights, assessments_completed flags)
+    - GET /profile/weights: per-user WeightVector with defaults (0.25/0.30/0.25/0.20)
+    - DELETE /profile: GDPR cascade-delete (user, demographics, sessions, results, nlp_analysis)
+[ ] Business logic — /recommendations, /feedback, /jobs, /audit not yet implemented
     [ ] /recommendations POST/GET — scoring formula + SHAP breakdown
     [ ] /feedback POST — accept accept/reject signal, update weights (α=0.025)
     [ ] /jobs GET — paginated jobs_snapshot query with filters
