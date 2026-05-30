@@ -75,6 +75,14 @@ Use `datetime.now(UTC)` via `default_factory=lambda: datetime.now(UTC)` — neve
 - `tests/backend/conftest.py` inserts `../../backend` into `sys.path`
 - Atlas creates collections lazily; call `ensure_indexes()` before `list_collection_names()` in tests
 
+## Survey question bank
+- Questions live in the `surveys` collection, seeded via `backend/app/seed.py::seed_surveys()`
+- 25 aptitude MCQs (ScienceQA-style, grade 7-10; engineering aptitude): `answer_index` = correct choice (0-indexed)
+- 25 OCEAN personality questions (5 per dimension, Likert 0-4): `metadata.ocean_dimension` + `metadata.polarity` (1 / -1)
+- Personality score per dimension: `raw = answer / 4.0`; flip if `polarity == -1`; mean per dimension → ocean_vector[5]
+- Aptitude score: `correct / total` → stored in `users.aptitude_score`
+- `conftest.py::seeded_surveys` fixture seeds once per test session and cleans up only what it inserted
+
 ## Current status
 [x] Project scaffold — all four services, Docker, Makefile, GitHub Actions CI
 [x] MongoDB connection layer — Motor client, ensure_indexes(), typed collection accessors
@@ -86,7 +94,17 @@ Use `datetime.now(UTC)` via `default_factory=lambda: datetime.now(UTC)` — neve
 [x] Frontend components — AppNav, WeightPanel, ShapBreakdown
 [x] Live Atlas connectivity tests — 6/6 passing
 [x] Auth layer — /auth/register, /login, /refresh, /logout, /me implemented and tested (11/11)
-[ ] Business logic — /survey, /profile, /recommendations, /feedback, /jobs, /audit not yet implemented
+[x] Survey layer — /survey/start, /submit, /submit-text, /status implemented and tested (16/16)
+    - Aptitude MCQ scoring (deterministic, updates users.aptitude_score)
+    - Personality OCEAN scoring (Likert → [O,C,E,A,N] vector, updates users.ocean_vector)
+    - Open-text ingestion (NlpAnalysisDocument created, NLP service called async, graceful fallback)
+[ ] Business logic — /profile, /recommendations, /feedback, /jobs, /audit not yet implemented
+    [ ] /profile GET — aggregate psychometric profile + weights from users collection
+    [ ] /profile/weights GET — return per-user WeightVector
+    [ ] /recommendations POST/GET — scoring formula + SHAP breakdown
+    [ ] /feedback POST — accept accept/reject signal, update weights (α=0.025)
+    [ ] /jobs GET — paginated jobs_snapshot query with filters
+    [ ] /audit GET — bias audit pipeline (admin only, joins recommendations + demographics)
 [ ] NLP service — embed + classify endpoints stubbed, model loading not implemented
 [ ] Job sync — APScheduler + JobDataPool API integration not implemented
 [ ] Frontend ↔ backend integration — views wired to real API calls
