@@ -125,7 +125,15 @@ Use `datetime.now(UTC)` via `default_factory=lambda: datetime.now(UTC)` — neve
     - Equal Opportunity Score = min_group_mean / overall_mean
     - Computes metrics for: gender, age_group, field_of_study, socioeconomic_background
     - Persists BiasAuditDocument snapshot; GET /reports lists all; GET /reports/{id} for single
-[ ] NLP service — embed + classify endpoints stubbed, model loading not implemented
+[x] NLP service — /embed, /classify, /analyse implemented and tested (27/27)
+    - sentence-transformers/all-MiniLM-L6-v2 → 384-dim normalised embedding (lazy singleton)
+    - OneVsRestClassifier(SVC, rbf, probability=True) → 6 thematic labels with per-label scores
+    - /analyse combines both in one call (used by backend survey _call_nlp_service)
+    - Lifespan pre-loads both models at startup; gracefully warns if classifier not trained
+    - nlp_service/.venv uses Python 3.13-compatible pinned versions
 [ ] Job sync — APScheduler + JobDataPool API integration not implemented
 [ ] Frontend ↔ backend integration — views wired to real API calls
-[ ] NLP SVM classifier training pipeline
+[x] NLP SVM classifier training pipeline — app/train.py with 90 hand-crafted labeled examples (15/label)
+    - Multi-label training data (6 labels: analytical, creative, interpersonal, technical, leadership, structured)
+    - Embeds corpus with MiniLM, fits OneVsRest SVM, saves bundle to models/svm_classifier.joblib
+    - `python -m app.train` or `make nlp-train`; conftest auto-trains if model file absent
