@@ -33,3 +33,29 @@ async def seeded_surveys():
 
     if inserted_ids:
         await col.delete_many({"_id": {"$in": inserted_ids}})
+
+
+@pytest.fixture(scope="session")
+async def seeded_archetypes():
+    """Ensure the career_archetypes collection has reference vectors for the test session.
+
+    Inserts any missing archetypes at session start; removes only the ones inserted
+    by this session at teardown.
+    """
+    from datetime import datetime, UTC
+    from app.database import career_archetypes_col
+    from app.seed import CAREER_ARCHETYPES
+
+    col = career_archetypes_col()
+
+    inserted_ids = []
+    for arch in CAREER_ARCHETYPES:
+        existing = await col.find_one({"career_id": arch["career_id"]})
+        if existing is None:
+            result = await col.insert_one({**arch, "updated_at": datetime.now(UTC)})
+            inserted_ids.append(result.inserted_id)
+
+    yield col
+
+    if inserted_ids:
+        await col.delete_many({"_id": {"$in": inserted_ids}})

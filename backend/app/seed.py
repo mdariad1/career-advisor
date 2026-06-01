@@ -343,6 +343,113 @@ PERSONALITY_QUESTIONS: list[dict] = [
 
 ALL_QUESTIONS = APTITUDE_QUESTIONS + PERSONALITY_QUESTIONS
 
+# ── Career archetype reference vectors ───────────────────────────────────────
+# OCEAN vector: [Openness, Conscientiousness, Extraversion, Agreeableness, Neuroticism]
+# nlp_centroid: placeholder zeros (replaced by trained MiniLM centroids in production)
+# thematic_labels: subset of {analytical, creative, interpersonal, technical, leadership, structured}
+
+_ZERO_CENTROID: list[float] = [0.0] * 384
+
+CAREER_ARCHETYPES: list[dict] = [
+    {
+        "career_id": "software_engineer",
+        "career_title": "Software Engineer",
+        "ocean_vector": [0.65, 0.72, 0.45, 0.55, 0.30],
+        "nlp_centroid": _ZERO_CENTROID,
+        "thematic_labels": ["technical", "analytical", "structured"],
+        "market_demand_seed": 0.88,
+        "sample_size": 450,
+        "source": "theoretical_fallback",
+    },
+    {
+        "career_id": "data_scientist",
+        "career_title": "Data Scientist",
+        "ocean_vector": [0.75, 0.68, 0.38, 0.50, 0.28],
+        "nlp_centroid": _ZERO_CENTROID,
+        "thematic_labels": ["analytical", "technical", "structured"],
+        "market_demand_seed": 0.85,
+        "sample_size": 320,
+        "source": "theoretical_fallback",
+    },
+    {
+        "career_id": "ux_designer",
+        "career_title": "UX Designer",
+        "ocean_vector": [0.82, 0.60, 0.62, 0.72, 0.40],
+        "nlp_centroid": _ZERO_CENTROID,
+        "thematic_labels": ["creative", "interpersonal", "analytical"],
+        "market_demand_seed": 0.74,
+        "sample_size": 210,
+        "source": "theoretical_fallback",
+    },
+    {
+        "career_id": "product_manager",
+        "career_title": "Product Manager",
+        "ocean_vector": [0.70, 0.65, 0.75, 0.68, 0.35],
+        "nlp_centroid": _ZERO_CENTROID,
+        "thematic_labels": ["leadership", "interpersonal", "analytical"],
+        "market_demand_seed": 0.80,
+        "sample_size": 280,
+        "source": "theoretical_fallback",
+    },
+    {
+        "career_id": "mechanical_engineer",
+        "career_title": "Mechanical Engineer",
+        "ocean_vector": [0.55, 0.78, 0.48, 0.52, 0.30],
+        "nlp_centroid": _ZERO_CENTROID,
+        "thematic_labels": ["technical", "structured", "analytical"],
+        "market_demand_seed": 0.70,
+        "sample_size": 360,
+        "source": "theoretical_fallback",
+    },
+    {
+        "career_id": "financial_analyst",
+        "career_title": "Financial Analyst",
+        "ocean_vector": [0.52, 0.80, 0.45, 0.50, 0.38],
+        "nlp_centroid": _ZERO_CENTROID,
+        "thematic_labels": ["analytical", "structured"],
+        "market_demand_seed": 0.72,
+        "sample_size": 290,
+        "source": "theoretical_fallback",
+    },
+    {
+        "career_id": "biomedical_researcher",
+        "career_title": "Biomedical Researcher",
+        "ocean_vector": [0.78, 0.75, 0.40, 0.58, 0.35],
+        "nlp_centroid": _ZERO_CENTROID,
+        "thematic_labels": ["analytical", "technical"],
+        "market_demand_seed": 0.62,
+        "sample_size": 180,
+        "source": "theoretical_fallback",
+    },
+    {
+        "career_id": "educator",
+        "career_title": "Educator",
+        "ocean_vector": [0.65, 0.68, 0.72, 0.82, 0.45],
+        "nlp_centroid": _ZERO_CENTROID,
+        "thematic_labels": ["interpersonal", "leadership", "structured"],
+        "market_demand_seed": 0.58,
+        "sample_size": 400,
+        "source": "theoretical_fallback",
+    },
+]
+
+
+async def seed_archetypes(col: AsyncIOMotorCollection) -> int:
+    """Insert career archetypes that don't already exist (matched by career_id).
+
+    Returns the number of newly inserted documents.
+    """
+    from datetime import datetime, UTC
+    inserted = 0
+    for arch in CAREER_ARCHETYPES:
+        existing = await col.find_one({"career_id": arch["career_id"]})
+        if existing is None:
+            await col.insert_one({**arch, "updated_at": datetime.now(UTC)})
+            inserted += 1
+    if inserted:
+        logger.info("Seeded %d career archetypes", inserted)
+    return inserted
+
 
 async def seed_surveys(col: AsyncIOMotorCollection) -> int:
     """Insert questions that don't already exist (matched by question text).
