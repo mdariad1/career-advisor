@@ -111,10 +111,20 @@ Use `datetime.now(UTC)` via `default_factory=lambda: datetime.now(UTC)` — neve
     - NLP similarity: embedding cosine sim > label Jaccard > neutral 0.5 fallback
     - Personality fit: OCEAN cosine similarity; defaults to 0.5 if personality survey not done
     - 8 career archetypes seeded in career_archetypes collection via seed.py::CAREER_ARCHETYPES
-[ ] Business logic — /feedback, /jobs, /audit not yet implemented
-    [ ] /feedback POST — accept accept/reject signal, update weights (α=0.025)
-    [ ] /jobs GET — paginated jobs_snapshot query with filters
-    [ ] /audit GET — bias audit pipeline (admin only, joins recommendations + demographics)
+[x] Feedback layer — /feedback POST implemented and tested (11/11)
+    - Accept: bumps top SHAP factor weight by α=0.025, normalises to sum=1.0, clamps [0.05, 0.50]
+    - Reject: logs event only, weights unchanged
+    - Persists FeedbackDocument; returns weights_before, weights_after, top_factor
+[x] Jobs layer — /jobs GET implemented and tested (10/10)
+    - Filters: industry, country_code (exact match); excludes stale listings
+    - Pagination: skip/limit (max 100); returns total, skip, limit, jobs list
+[x] Audit layer — /audit/run POST, /audit/reports GET/{id} implemented and tested (11/11)
+    - Admin-only (require_admin dependency); promotes role via JWT
+    - Joins recommendations (most-recent score per user) with user_demographics
+    - Disparate Impact Ratio = min_group_mean / max_group_mean; flagged if DIR < 0.80
+    - Equal Opportunity Score = min_group_mean / overall_mean
+    - Computes metrics for: gender, age_group, field_of_study, socioeconomic_background
+    - Persists BiasAuditDocument snapshot; GET /reports lists all; GET /reports/{id} for single
 [ ] NLP service — embed + classify endpoints stubbed, model loading not implemented
 [ ] Job sync — APScheduler + JobDataPool API integration not implemented
 [ ] Frontend ↔ backend integration — views wired to real API calls
