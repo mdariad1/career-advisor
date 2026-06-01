@@ -1,13 +1,12 @@
-from fastapi.testclient import TestClient
+"""NLP service health check."""
 import sys, os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../nlp_service'))
-from app.main import app
-
-client = TestClient(app)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../nlp_service"))
 
 
-def test_health():
-    response = client.get("/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+async def test_health(client):
+    resp = await client.get("/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert data["embedder_loaded"] is True
+    assert data["classifier_loaded"] is True
