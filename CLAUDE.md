@@ -102,8 +102,16 @@ Use `datetime.now(UTC)` via `default_factory=lambda: datetime.now(UTC)` — neve
     - GET /profile: unified psychometric profile (aptitude_score, ocean_vector, nlp_labels, weights, assessments_completed flags)
     - GET /profile/weights: per-user WeightVector with defaults (0.25/0.30/0.25/0.20)
     - DELETE /profile: GDPR cascade-delete (user, demographics, sessions, results, nlp_analysis)
-[ ] Business logic — /recommendations, /feedback, /jobs, /audit not yet implemented
-    [ ] /recommendations POST/GET — scoring formula + SHAP breakdown
+[x] Recommendations layer — /recommendations POST/GET/{id} implemented and tested (14/14)
+    - POST /recommendations: score all archetypes → top-5 → persist + return; replaces prior run
+    - GET /recommendations: return cached top-5 (no recompute)
+    - GET /recommendations/{id}: single recommendation lookup
+    - Scoring: score = w_apt*aptitude + w_pf*personality_fit + w_nlp*nlp_similarity + w_md*market_demand
+    - SHAP: analytically exact additive decomposition (weighted contribution per term, sums to score)
+    - NLP similarity: embedding cosine sim > label Jaccard > neutral 0.5 fallback
+    - Personality fit: OCEAN cosine similarity; defaults to 0.5 if personality survey not done
+    - 8 career archetypes seeded in career_archetypes collection via seed.py::CAREER_ARCHETYPES
+[ ] Business logic — /feedback, /jobs, /audit not yet implemented
     [ ] /feedback POST — accept accept/reject signal, update weights (α=0.025)
     [ ] /jobs GET — paginated jobs_snapshot query with filters
     [ ] /audit GET — bias audit pipeline (admin only, joins recommendations + demographics)
