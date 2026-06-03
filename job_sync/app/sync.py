@@ -69,7 +69,11 @@ async def _fetch_jobs_for_industry(
             break
 
         data = resp.json()
-        page_jobs = data.get("jobs") or []
+        # API may return a bare list or a dict with a "jobs" / "data" key
+        if isinstance(data, list):
+            page_jobs = data
+        else:
+            page_jobs = data.get("jobs") or data.get("data") or []
         jobs.extend(page_jobs)
 
         # Stop if we got fewer results than page size (last page)
