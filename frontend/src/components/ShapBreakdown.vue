@@ -38,10 +38,10 @@ const colours: Record<keyof ShapContributions, string> = {
         <div class="flex-1 bg-gray-100 rounded-full h-1.5">
           <div
             :class="['h-1.5 rounded-full transition-all duration-500', colours[key as keyof ShapContributions]]"
-            :style="{ width: `${value.toFixed(0)}%` }"
+            :style="{ width: `${(value * 100).toFixed(0)}%` }"
           />
         </div>
-        <span class="w-8 text-right text-gray-700">{{ value.toFixed(0) }}%</span>
+        <span class="w-10 text-right text-gray-700">{{ (value * 100).toFixed(1) }}%</span>
       </li>
     </ul>
     <p class="text-xs text-gray-500 italic">{{ explanation }}</p>

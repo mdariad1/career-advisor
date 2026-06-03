@@ -131,8 +131,14 @@ Use `datetime.now(UTC)` via `default_factory=lambda: datetime.now(UTC)` — neve
     - /analyse combines both in one call (used by backend survey _call_nlp_service)
     - Lifespan pre-loads both models at startup; gracefully warns if classifier not trained
     - nlp_service/.venv uses Python 3.13-compatible pinned versions
-[ ] Job sync — APScheduler + JobDataPool API integration not implemented
-[ ] Frontend ↔ backend integration — views wired to real API calls
+[x] Job sync — APScheduler + JobDataPool API integration implemented
+    - run_sync_cycle(): fetch per-industry from JobDataPool, NLP classify skills, upsert jobs_snapshot, mark stale
+    - Respects inter_query_delay_seconds rate limit and job_stale_days threshold from config
+[x] Frontend ↔ backend integration — views wired to real API calls
+    - AssessmentView: loads questions from /survey/start; MCQ radio buttons (aptitude); Likert 0-4 buttons (personality)
+    - RecommendationsView: unwraps data.recommendations; 404 → generate button; regenerate button
+    - JobsView: unwraps data.jobs from paginated response shape {total, skip, limit, jobs}
+    - ShapBreakdown: fixed value scaling (contributions are 0–0.5 floats, multiplied by 100 for display)
 [x] NLP SVM classifier training pipeline — app/train.py with 90 hand-crafted labeled examples (15/label)
     - Multi-label training data (6 labels: analytical, creative, interpersonal, technical, leadership, structured)
     - Embeds corpus with MiniLM, fits OneVsRest SVM, saves bundle to models/svm_classifier.joblib

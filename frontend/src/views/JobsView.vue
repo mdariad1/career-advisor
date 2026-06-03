@@ -29,7 +29,7 @@ async function fetchJobs() {
         country_code: countryFilter.value || undefined,
       },
     })
-    jobs.value = data
+    jobs.value = data.jobs
   } catch (e: any) {
     error.value = e.message
   } finally {
