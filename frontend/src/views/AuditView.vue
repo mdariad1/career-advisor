@@ -2,15 +2,17 @@
 import { ref, onMounted } from 'vue'
 import { api } from '@/api'
 
+interface Metric {
+  attribute: string
+  disparate_impact_ratio: number
+  equal_opportunity_score: number
+  flagged: boolean
+}
+
 interface AuditReport {
   id: string
   created_at: string
-  metrics: {
-    attribute: string
-    disparate_impact_ratio: number
-    equal_opportunity_score: number
-    flagged: boolean
-  }[]
+  metrics: Metric[]
 }
 
 const reports = ref<AuditReport[]>([])
@@ -47,50 +49,70 @@ async function runAudit() {
 </script>
 
 <template>
-  <div class="max-w-4xl mx-auto py-10 px-4 space-y-6">
+  <div class="max-w-4xl mx-auto py-10 px-6 space-y-6">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-semibold text-gray-800">Bias Audit</h1>
-        <p class="text-sm text-gray-500 mt-1">Disparate impact and equal opportunity scores — admin only.</p>
+        <h1 class="text-xl font-semibold text-neutral-100">Bias Audit</h1>
+        <p class="text-sm text-neutral-500 mt-1">Disparate impact and equal opportunity scores — admin only.</p>
       </div>
       <button
         @click="runAudit"
         :disabled="running"
-        class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+        class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
       >
-        {{ running ? 'Running…' : 'Run audit' }}
+        {{ running ? 'Running…' : 'Run Audit' }}
       </button>
     </div>
 
-    <p v-if="error" class="text-red-500 text-sm">{{ error }}</p>
-    <div v-if="loading" class="text-gray-400 text-sm">Loading reports…</div>
+    <p v-if="error" class="text-red-400 text-sm">{{ error }}</p>
+    <div v-if="loading" class="text-neutral-600 text-sm py-8 text-center">Loading reports…</div>
 
-    <div v-for="report in reports" :key="report.id" class="bg-white border border-gray-200 rounded-lg p-5 space-y-3">
-      <p class="text-xs text-gray-400">Report generated {{ new Date(report.created_at).toLocaleString() }}</p>
+    <div v-if="reports.length === 0 && !loading" class="text-neutral-600 text-sm py-8 text-center">
+      No reports yet. Run an audit to generate the first report.
+    </div>
+
+    <div
+      v-for="report in reports"
+      :key="report.id"
+      class="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden"
+    >
+      <div class="px-5 py-3 border-b border-neutral-800">
+        <p class="text-xs text-neutral-500">
+          Generated {{ new Date(report.created_at).toLocaleString() }}
+        </p>
+      </div>
 
       <table class="w-full text-sm">
         <thead>
-          <tr class="text-left text-xs text-gray-500 border-b border-gray-100">
-            <th class="pb-2">Attribute</th>
-            <th class="pb-2">Disparate Impact Ratio</th>
-            <th class="pb-2">Equal Opportunity Score</th>
-            <th class="pb-2">Status</th>
+          <tr class="text-left border-b border-neutral-800">
+            <th class="px-5 py-2.5 text-xs font-medium text-neutral-500 uppercase tracking-wide">Attribute</th>
+            <th class="px-5 py-2.5 text-xs font-medium text-neutral-500 uppercase tracking-wide">DIR</th>
+            <th class="px-5 py-2.5 text-xs font-medium text-neutral-500 uppercase tracking-wide">EOS</th>
+            <th class="px-5 py-2.5 text-xs font-medium text-neutral-500 uppercase tracking-wide">Status</th>
           </tr>
         </thead>
         <tbody>
           <tr
             v-for="m in report.metrics"
             :key="m.attribute"
-            :class="['border-b border-gray-50', m.flagged ? 'bg-red-50' : '']"
+            class="border-b border-neutral-800 last:border-0"
+            :class="m.flagged ? 'bg-red-950/30' : ''"
           >
-            <td class="py-2 text-gray-700 capitalize">{{ m.attribute.replace('_', ' ') }}</td>
-            <td class="py-2">{{ m.disparate_impact_ratio.toFixed(3) }}</td>
-            <td class="py-2">{{ m.equal_opportunity_score.toFixed(3) }}</td>
-            <td class="py-2">
+            <td class="px-5 py-3 text-neutral-300 capitalize">
+              {{ m.attribute.replace(/_/g, ' ') }}
+            </td>
+            <td class="px-5 py-3 text-neutral-400 tabular-nums">{{ m.disparate_impact_ratio.toFixed(3) }}</td>
+            <td class="px-5 py-3 text-neutral-400 tabular-nums">{{ m.equal_opportunity_score.toFixed(3) }}</td>
+            <td class="px-5 py-3">
               <span
-                :class="['text-xs px-2 py-0.5 rounded-full', m.flagged ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700']"
+                :class="[
+                  'text-xs px-2 py-0.5 rounded-full',
+                  m.flagged
+                    ? 'bg-red-950 text-red-400 border border-red-900'
+                    : 'bg-neutral-800 text-neutral-400 border border-neutral-700',
+                ]"
               >
-                {{ m.flagged ? '⚠ Below 0.80' : 'Pass' }}
+                {{ m.flagged ? 'Below 0.80' : 'Pass' }}
               </span>
             </td>
           </tr>

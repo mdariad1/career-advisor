@@ -15,7 +15,7 @@ interface Question {
   grade?: number
 }
 
-// ── State ────────────────────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────────────────
 
 const currentStep = ref<Step>('aptitude')
 const error = ref('')
@@ -24,22 +24,22 @@ const loading = ref(false)
 // Aptitude
 const aptitudeSessionId = ref('')
 const aptitudeQuestions = ref<Question[]>([])
-const aptitudeAnswers = ref<number[]>([])   // -1 = unanswered
+const aptitudeAnswers = ref<number[]>([])
 const aptitudeResult = ref<{ score: number; correct: number; total: number } | null>(null)
 
 // Personality
 const personalitySessionId = ref('')
 const personalityQuestions = ref<Question[]>([])
-const personalityAnswers = ref<number[]>([])  // Likert 0-4, default 2 (neutral)
+const personalityAnswers = ref<number[]>([])
 
 // Open text
 const openText = ref('')
 const nlpProcessing = ref(false)
-const nlpSessionId = ref('')
 
-const LIKERT_LABELS = ['Strongly disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly agree']
+const LIKERT_LABELS = ['SD', 'D', 'N', 'A', 'SA']
+const LIKERT_FULL = ['Strongly disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly agree']
 
-// ── Aptitude ─────────────────────────────────────────────────────────────────
+// ── Aptitude ──────────────────────────────────────────────────────────────────
 
 async function startAptitude() {
   loading.value = true
@@ -84,7 +84,7 @@ async function startPersonality() {
   const { data } = await api.post('/survey/start', { survey_type: 'personality' })
   personalitySessionId.value = data.session_id
   personalityQuestions.value = data.questions
-  personalityAnswers.value = new Array(data.questions.length).fill(2)  // default neutral
+  personalityAnswers.value = new Array(data.questions.length).fill(2)
 }
 
 async function submitPersonality() {
@@ -110,7 +110,6 @@ async function submitOpenText() {
   nlpProcessing.value = true
   try {
     const { data: session } = await api.post('/survey/start', { survey_type: 'open_text' })
-    nlpSessionId.value = session.session_id
     await api.post('/survey/submit-text', {
       session_id: session.session_id,
       response_text: openText.value,
@@ -130,181 +129,184 @@ async function pollNlpStatus(sessionId: string) {
     const { data } = await api.get(`/survey/status/${sessionId}`)
     if (data.status === 'done') return
   }
-  // Non-fatal: NLP may finish async; user can still proceed
 }
 
-// Kick off aptitude questions immediately on mount
+const answeredCount = () => aptitudeAnswers.value.filter((a) => a !== -1).length
+
 startAptitude()
 </script>
 
 <template>
-  <div class="max-w-2xl mx-auto py-10 px-4 space-y-6">
-    <h1 class="text-2xl font-semibold text-gray-800">Assessment</h1>
+  <div class="max-w-2xl mx-auto py-10 px-6 space-y-6">
 
-    <!-- Step indicators -->
-    <div class="flex gap-2 text-xs">
-      <span
-        v-for="step in (['aptitude', 'personality', 'open_text'] as Step[])"
-        :key="step"
-        :class="[
-          'px-3 py-1 rounded-full',
-          currentStep === step ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500',
-        ]"
-      >
-        {{ step === 'aptitude' ? 'Aptitude' : step === 'personality' ? 'Personality' : 'Reflective' }}
-      </span>
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+      <h1 class="text-xl font-semibold text-neutral-100">Assessment</h1>
+      <div class="flex gap-1.5">
+        <span
+          v-for="(step, i) in ['aptitude', 'personality', 'open_text']"
+          :key="step"
+          :class="[
+            'text-xs px-3 py-1 rounded-full border transition-colors',
+            currentStep === step
+              ? 'bg-indigo-600 border-indigo-600 text-white'
+              : 'border-neutral-800 text-neutral-600',
+          ]"
+        >
+          {{ i === 0 ? 'Aptitude' : i === 1 ? 'Personality' : 'Reflective' }}
+        </span>
+      </div>
     </div>
 
-    <!-- Loading spinner (fetching questions) -->
+    <!-- Loading -->
     <div v-if="loading && aptitudeQuestions.length === 0 && currentStep === 'aptitude'"
-         class="text-gray-400 text-sm">
+         class="text-neutral-600 text-sm py-8 text-center">
       Loading questions…
     </div>
 
-    <!-- ── Aptitude ─────────────────────────────────────────────────────── -->
-    <div v-else-if="currentStep === 'aptitude'"
-         class="bg-white border border-gray-200 rounded-lg p-6 space-y-6">
-
-      <p class="text-sm text-gray-500">
-        {{ aptitudeQuestions.length }} multiple-choice questions — select one answer per question.
-      </p>
+    <!-- ── Aptitude ─────────────────────────────────────────────────────────── -->
+    <div v-else-if="currentStep === 'aptitude'" class="space-y-5">
+      <div class="flex items-center justify-between text-xs text-neutral-600">
+        <span>{{ aptitudeQuestions.length }} questions</span>
+        <span>{{ answeredCount() }} / {{ aptitudeQuestions.length }} answered</span>
+      </div>
 
       <div
         v-for="(q, qi) in aptitudeQuestions"
         :key="q.id"
-        class="space-y-2"
+        class="bg-neutral-900 border border-neutral-800 rounded-lg p-4 space-y-3"
       >
-        <p class="text-sm font-medium text-gray-800">{{ qi + 1 }}. {{ q.question }}</p>
-        <div class="space-y-1 pl-2">
+        <p class="text-sm text-neutral-200 leading-relaxed">
+          <span class="text-neutral-600 mr-1.5">{{ qi + 1 }}.</span>{{ q.question }}
+        </p>
+        <div class="space-y-1.5">
           <label
             v-for="(choice, ci) in q.choices"
             :key="ci"
             :class="[
-              'flex items-center gap-2 text-sm px-3 py-2 rounded-lg cursor-pointer',
+              'flex items-center gap-2.5 text-sm px-3 py-2 rounded-lg cursor-pointer border transition-colors',
               aptitudeAnswers[qi] === ci
-                ? 'bg-blue-50 border border-blue-300 text-blue-800'
-                : 'border border-gray-100 text-gray-700 hover:bg-gray-50',
+                ? 'bg-indigo-950 border-indigo-700 text-indigo-200'
+                : 'border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-300',
             ]"
           >
             <input
               type="radio"
-              :name="`aptitude-${qi}`"
+              :name="`apt-${qi}`"
               :value="ci"
               v-model="aptitudeAnswers[qi]"
-              class="accent-blue-600"
+              class="accent-indigo-500 shrink-0"
             />
             {{ choice }}
           </label>
         </div>
       </div>
 
-      <p v-if="error" class="text-red-500 text-xs">{{ error }}</p>
+      <p v-if="error" class="text-red-400 text-xs">{{ error }}</p>
 
       <button
         @click="submitAptitude"
         :disabled="loading"
-        class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+        class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
       >
-        {{ loading ? 'Submitting…' : 'Next →' }}
+        {{ loading ? 'Submitting…' : 'Continue →' }}
       </button>
     </div>
 
-    <!-- ── Personality ──────────────────────────────────────────────────── -->
-    <div v-else-if="currentStep === 'personality'"
-         class="bg-white border border-gray-200 rounded-lg p-6 space-y-5">
-
-      <p class="text-sm text-gray-500">
-        Rate how well each statement describes you on a scale from
-        <em>Strongly disagree</em> to <em>Strongly agree</em>.
+    <!-- ── Personality ─────────────────────────────────────────────────────── -->
+    <div v-else-if="currentStep === 'personality'" class="space-y-4">
+      <p class="text-xs text-neutral-600">
+        Rate how well each statement describes you — 0 (strongly disagree) to 4 (strongly agree).
       </p>
 
       <div
         v-for="(q, qi) in personalityQuestions"
         :key="q.id"
-        class="space-y-2"
+        class="bg-neutral-900 border border-neutral-800 rounded-lg p-4 space-y-3"
       >
-        <p class="text-sm font-medium text-gray-800">{{ qi + 1 }}. {{ q.question }}</p>
-        <div class="flex gap-1">
+        <p class="text-sm text-neutral-200 leading-relaxed">
+          <span class="text-neutral-600 mr-1.5">{{ qi + 1 }}.</span>{{ q.question }}
+        </p>
+        <div class="flex gap-1.5">
           <button
             v-for="(label, val) in LIKERT_LABELS"
             :key="val"
             @click="personalityAnswers[qi] = val"
-            :title="label"
+            :title="LIKERT_FULL[val]"
             :class="[
-              'flex-1 py-2 rounded text-xs border transition-colors',
+              'flex-1 py-1.5 rounded text-xs border transition-colors',
               personalityAnswers[qi] === val
-                ? 'bg-blue-600 border-blue-600 text-white font-medium'
-                : 'border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600',
+                ? 'bg-indigo-600 border-indigo-600 text-white'
+                : 'border-neutral-800 text-neutral-600 hover:border-neutral-700 hover:text-neutral-400',
             ]"
           >
-            {{ val }}
+            {{ label }}
           </button>
-        </div>
-        <div class="flex justify-between text-xs text-gray-400 px-0.5">
-          <span>Strongly disagree</span>
-          <span>Strongly agree</span>
         </div>
       </div>
 
-      <p v-if="error" class="text-red-500 text-xs">{{ error }}</p>
+      <p v-if="error" class="text-red-400 text-xs">{{ error }}</p>
 
       <button
         @click="submitPersonality"
         :disabled="loading"
-        class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+        class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
       >
-        {{ loading ? 'Submitting…' : 'Next →' }}
+        {{ loading ? 'Submitting…' : 'Continue →' }}
       </button>
     </div>
 
-    <!-- ── Open-text ────────────────────────────────────────────────────── -->
+    <!-- ── Open text ───────────────────────────────────────────────────────── -->
     <div v-else-if="currentStep === 'open_text'"
-         class="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
-
-      <label class="block text-sm text-gray-700 font-medium">
-        Describe your interests, values, and the kind of work environment you thrive in.
-      </label>
-      <p class="text-xs text-gray-400">Write at least 30 characters. Your response is analysed by our NLP model to match thematic career labels.</p>
+         class="bg-neutral-900 border border-neutral-800 rounded-lg p-5 space-y-4">
+      <div>
+        <p class="text-sm font-medium text-neutral-200">Reflective question</p>
+        <p class="text-xs text-neutral-500 mt-1">
+          Describe your interests, values, and the kind of work environment you thrive in.
+          Your response is analysed by the NLP model to produce thematic career labels.
+        </p>
+      </div>
 
       <textarea
         v-model="openText"
         rows="6"
-        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
-        placeholder="Write freely…"
+        class="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-700 resize-none focus:outline-none focus:border-indigo-600 transition-colors"
+        placeholder="Write freely… (minimum 30 characters)"
       />
 
-      <div v-if="nlpProcessing" class="flex items-center gap-2 text-sm text-blue-600">
-        <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+      <div v-if="nlpProcessing" class="flex items-center gap-2 text-sm text-indigo-400">
+        <svg class="animate-spin h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
         </svg>
         Analysing your response…
       </div>
 
-      <p v-if="error" class="text-red-500 text-xs">{{ error }}</p>
+      <p v-if="error" class="text-red-400 text-xs">{{ error }}</p>
 
       <button
         @click="submitOpenText"
         :disabled="nlpProcessing || openText.trim().length < 30"
-        class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+        class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
       >
         Submit
       </button>
     </div>
 
-    <!-- ── Complete ─────────────────────────────────────────────────────── -->
-    <div v-else class="bg-white border border-green-200 rounded-lg p-6 text-center space-y-3">
-      <p class="text-green-700 font-medium text-lg">Assessment complete!</p>
-      <p v-if="aptitudeResult" class="text-sm text-gray-600">
+    <!-- ── Complete ────────────────────────────────────────────────────────── -->
+    <div v-else class="bg-neutral-900 border border-neutral-800 rounded-lg p-6 text-center space-y-4">
+      <p class="text-neutral-100 font-medium">Assessment complete</p>
+      <p v-if="aptitudeResult" class="text-sm text-neutral-500">
         Aptitude: {{ aptitudeResult.correct }}/{{ aptitudeResult.total }}
         ({{ (aptitudeResult.score * 100).toFixed(0) }}%)
       </p>
       <RouterLink
         to="/recommendations"
-        class="inline-block bg-blue-600 text-white px-5 py-2 rounded-lg text-sm hover:bg-blue-700"
+        class="inline-block bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
       >
-        View your career matches →
+        View career matches →
       </RouterLink>
     </div>
+
   </div>
 </template>

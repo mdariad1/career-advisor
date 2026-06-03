@@ -7,7 +7,7 @@ const auth = useAuthStore()
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 flex flex-col">
+  <div class="min-h-screen bg-neutral-950 flex flex-col">
     <AppNav v-if="auth.isAuthenticated" />
     <main class="flex-1">
       <RouterView />

@@ -65,6 +65,8 @@ services:
     image: node:20-alpine
     working_dir: /app
     command: sh -c "npm install && npm run dev -- --host"
+    environment:
+      - VITE_API_TARGET=http://backend:8000
     volumes:
       - ./frontend:/app
     ports:

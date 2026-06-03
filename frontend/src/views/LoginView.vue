@@ -26,42 +26,49 @@ async function submit() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50">
-    <div class="bg-white p-8 rounded-xl shadow-sm w-full max-w-md">
-      <h1 class="text-2xl font-semibold text-gray-800 mb-6">Sign in</h1>
+  <div class="min-h-screen flex items-center justify-center bg-neutral-950 px-4">
+    <div class="w-full max-w-sm">
+      <div class="mb-8">
+        <h1 class="text-2xl font-semibold text-neutral-100">Sign in</h1>
+        <p class="text-sm text-neutral-500 mt-1">Career Advisor</p>
+      </div>
 
       <form @submit.prevent="submit" class="space-y-4">
         <div>
-          <label class="block text-sm text-gray-600 mb-1">Email</label>
+          <label class="block text-xs text-neutral-500 mb-1.5 uppercase tracking-wide">Email</label>
           <input
             v-model="email"
             type="email"
             required
-            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            class="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-indigo-500 transition-colors"
           />
         </div>
         <div>
-          <label class="block text-sm text-gray-600 mb-1">Password</label>
+          <label class="block text-xs text-neutral-500 mb-1.5 uppercase tracking-wide">Password</label>
           <input
             v-model="password"
             type="password"
             required
-            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            class="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-indigo-500 transition-colors"
           />
         </div>
-        <p v-if="error" class="text-red-500 text-xs">{{ error }}</p>
+
+        <p v-if="error" class="text-red-400 text-xs">{{ error }}</p>
+
         <button
           type="submit"
           :disabled="loading"
-          class="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+          class="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
         >
           {{ loading ? 'Signing in…' : 'Sign in' }}
         </button>
       </form>
 
-      <p class="text-sm text-gray-500 mt-4 text-center">
+      <p class="text-sm text-neutral-600 mt-6 text-center">
         No account?
-        <RouterLink to="/register" class="text-blue-600 hover:underline">Register</RouterLink>
+        <RouterLink to="/register" class="text-indigo-400 hover:text-indigo-300 transition-colors">
+          Register
+        </RouterLink>
       </p>
     </div>
   </div>

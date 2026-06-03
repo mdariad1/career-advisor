@@ -74,75 +74,81 @@ async function sendFeedback(rec: Recommendation, action: 'accept' | 'reject') {
 </script>
 
 <template>
-  <div class="max-w-5xl mx-auto py-10 px-4 space-y-8">
+  <div class="max-w-5xl mx-auto py-10 px-6">
     <div class="flex items-start gap-8">
-      <div class="flex-1 space-y-6">
-        <h1 class="text-2xl font-semibold text-gray-800">Career Recommendations</h1>
 
-        <div v-if="loading" class="text-gray-400 text-sm">Loading recommendations…</div>
+      <!-- Main -->
+      <div class="flex-1 space-y-5 min-w-0">
+        <div class="flex items-center justify-between">
+          <h1 class="text-xl font-semibold text-neutral-100">Career Recommendations</h1>
+          <button
+            v-if="recommendations.length > 0"
+            @click="generate"
+            :disabled="generating"
+            class="text-xs text-neutral-500 hover:text-neutral-300 border border-neutral-800 hover:border-neutral-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+          >
+            {{ generating ? 'Regenerating…' : 'Regenerate' }}
+          </button>
+        </div>
 
-        <div v-else-if="noRecommendations" class="bg-white border border-gray-200 rounded-lg p-6 text-center space-y-3">
-          <p class="text-gray-600 text-sm">No recommendations yet. Complete your assessment then generate your top career matches.</p>
+        <div v-if="loading" class="text-neutral-600 text-sm py-8 text-center">
+          Loading recommendations…
+        </div>
+
+        <div v-else-if="noRecommendations"
+             class="bg-neutral-900 border border-neutral-800 rounded-lg p-8 text-center space-y-4">
+          <p class="text-neutral-400 text-sm">No recommendations yet.</p>
+          <p class="text-neutral-600 text-xs">Complete your assessment, then generate your top career matches.</p>
           <button
             @click="generate"
             :disabled="generating"
-            class="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
           >
             {{ generating ? 'Generating…' : 'Generate Recommendations' }}
           </button>
         </div>
 
-        <p v-else-if="error" class="text-red-500 text-sm">{{ error }}</p>
+        <p v-else-if="error" class="text-red-400 text-sm">{{ error }}</p>
 
-        <template v-else>
-          <div class="flex justify-end">
-            <button
-              @click="generate"
-              :disabled="generating"
-              class="text-xs text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 disabled:opacity-50"
-            >
-              {{ generating ? 'Regenerating…' : 'Regenerate' }}
-            </button>
-          </div>
-
-          <div
-            v-for="(rec, idx) in recommendations"
-            :key="rec.id"
-            class="bg-white border border-gray-200 rounded-lg p-5 space-y-4"
-          >
-            <div class="flex items-start justify-between">
-              <div>
-                <span class="text-xs text-gray-400 font-mono">#{{ idx + 1 }}</span>
-                <h2 class="text-lg font-semibold text-gray-800">{{ rec.career_title }}</h2>
-                <p class="text-xs text-gray-500">
-                  Score: {{ (rec.score * 100).toFixed(1) }}%
-                  <template v-if="rec.salary_range"> · {{ rec.salary_range }}</template>
-                  · {{ rec.job_count }} live listings
-                </p>
+        <div
+          v-for="(rec, idx) in recommendations"
+          :key="rec.id"
+          class="bg-neutral-900 border border-neutral-800 rounded-lg p-5 space-y-4"
+        >
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <div class="flex items-baseline gap-2">
+                <span class="text-xs text-neutral-600 font-mono tabular-nums">#{{ idx + 1 }}</span>
+                <h2 class="text-base font-semibold text-neutral-100 truncate">{{ rec.career_title }}</h2>
               </div>
-              <div class="flex gap-2">
-                <button
-                  @click="sendFeedback(rec, 'accept')"
-                  class="text-xs bg-green-50 border border-green-200 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-100"
-                >
-                  Accept
-                </button>
-                <button
-                  @click="sendFeedback(rec, 'reject')"
-                  class="text-xs bg-red-50 border border-red-200 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100"
-                >
-                  Reject
-                </button>
-              </div>
+              <p class="text-xs text-neutral-500 mt-0.5">
+                {{ (rec.score * 100).toFixed(1) }}% match
+                <template v-if="rec.salary_range"> · {{ rec.salary_range }}</template>
+                · {{ rec.job_count }} listings
+              </p>
             </div>
-
-            <ShapBreakdown :contributions="rec.contributions" :explanation="rec.explanation" />
+            <div class="flex gap-1.5 shrink-0">
+              <button
+                @click="sendFeedback(rec, 'accept')"
+                class="text-xs border border-neutral-700 text-neutral-400 hover:border-indigo-700 hover:text-indigo-300 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                Accept
+              </button>
+              <button
+                @click="sendFeedback(rec, 'reject')"
+                class="text-xs border border-neutral-700 text-neutral-400 hover:border-red-900 hover:text-red-400 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                Reject
+              </button>
+            </div>
           </div>
-        </template>
+
+          <ShapBreakdown :contributions="rec.contributions" :explanation="rec.explanation" />
+        </div>
       </div>
 
-      <!-- Live weight panel -->
-      <aside class="w-64 shrink-0 sticky top-6">
+      <!-- Weight sidebar -->
+      <aside class="w-56 shrink-0 sticky top-6">
         <WeightPanel v-if="user.profile" :weights="user.profile.weights" />
       </aside>
     </div>

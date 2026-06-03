@@ -8,12 +8,13 @@ interface Job {
   company: string
   industry: string
   country_code: string
-  salary_range: string
+  salary_range: string | null
   skills: string[]
   synced_at: string
 }
 
 const jobs = ref<Job[]>([])
+const total = ref(0)
 const loading = ref(true)
 const error = ref('')
 const industryFilter = ref('')
@@ -30,6 +31,7 @@ async function fetchJobs() {
       },
     })
     jobs.value = data.jobs
+    total.value = data.total
   } catch (e: any) {
     error.value = e.message
   } finally {
@@ -41,54 +43,73 @@ onMounted(fetchJobs)
 </script>
 
 <template>
-  <div class="max-w-4xl mx-auto py-10 px-4 space-y-6">
-    <h1 class="text-2xl font-semibold text-gray-800">Job Listings</h1>
-    <p class="text-sm text-gray-500">Live listings from JobDataPool, matched to your top career categories.</p>
+  <div class="max-w-4xl mx-auto py-10 px-6 space-y-6">
+    <div>
+      <h1 class="text-xl font-semibold text-neutral-100">Job Listings</h1>
+      <p class="text-sm text-neutral-500 mt-1">Live listings from JobDataPool.</p>
+    </div>
 
-    <div class="flex gap-3">
+    <!-- Filters -->
+    <div class="flex gap-2">
       <input
         v-model="industryFilter"
         type="text"
-        placeholder="Filter by industry"
-        class="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1"
+        placeholder="Industry"
+        class="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-indigo-600 transition-colors"
       />
       <input
         v-model="countryFilter"
         type="text"
-        placeholder="Country code (e.g. GB)"
-        class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-40"
+        placeholder="Country (e.g. GB)"
+        class="w-36 bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-indigo-600 transition-colors"
       />
-      <button @click="fetchJobs" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">
+      <button
+        @click="fetchJobs"
+        class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+      >
         Search
       </button>
     </div>
 
-    <div v-if="loading" class="text-gray-400 text-sm">Loading jobs…</div>
-    <p v-else-if="error" class="text-red-500 text-sm">{{ error }}</p>
-    <p v-else-if="jobs.length === 0" class="text-gray-400 text-sm">No jobs found.</p>
+    <div v-if="loading" class="text-neutral-600 text-sm py-8 text-center">Loading jobs…</div>
+    <p v-else-if="error" class="text-red-400 text-sm">{{ error }}</p>
 
-    <ul class="space-y-3">
-      <li
-        v-for="job in jobs"
-        :key="job.job_id"
-        class="bg-white border border-gray-200 rounded-lg p-4 space-y-1"
-      >
-        <div class="flex justify-between">
-          <h2 class="font-medium text-gray-800">{{ job.title }}</h2>
-          <span class="text-xs text-gray-500">{{ job.country_code }}</span>
-        </div>
-        <p class="text-xs text-gray-500">{{ job.company }} · {{ job.industry }}</p>
-        <p class="text-xs text-gray-600">{{ job.salary_range }}</p>
-        <div class="flex flex-wrap gap-1 mt-1">
-          <span
-            v-for="skill in job.skills"
-            :key="skill"
-            class="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded"
-          >
-            {{ skill }}
-          </span>
-        </div>
-      </li>
-    </ul>
+    <template v-else>
+      <p class="text-xs text-neutral-600">{{ total }} result{{ total !== 1 ? 's' : '' }}</p>
+
+      <p v-if="jobs.length === 0" class="text-neutral-600 text-sm py-8 text-center">
+        No jobs found.
+      </p>
+
+      <ul v-else class="space-y-2">
+        <li
+          v-for="job in jobs"
+          :key="job.job_id"
+          class="bg-neutral-900 border border-neutral-800 rounded-lg p-4 space-y-2"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h2 class="font-medium text-neutral-100 truncate">{{ job.title }}</h2>
+              <p class="text-xs text-neutral-500 mt-0.5">
+                {{ job.company }} · {{ job.industry }}
+              </p>
+            </div>
+            <span class="text-xs text-neutral-600 shrink-0">{{ job.country_code }}</span>
+          </div>
+
+          <p v-if="job.salary_range" class="text-xs text-neutral-400">{{ job.salary_range }}</p>
+
+          <div v-if="job.skills.length" class="flex flex-wrap gap-1">
+            <span
+              v-for="skill in job.skills"
+              :key="skill"
+              class="bg-neutral-800 text-neutral-400 text-xs px-2 py-0.5 rounded"
+            >
+              {{ skill }}
+            </span>
+          </div>
+        </li>
+      </ul>
+    </template>
   </div>
 </template>
