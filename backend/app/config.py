@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     target_country_code: str = "GB"
 
     # JWT config
-    access_token_expire_minutes: int = 15
+    access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 7
 
 

@@ -7,7 +7,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .routers import auth, survey, profile, recommendations, feedback, jobs, audit
-from .database import ping_db, close_db, ensure_indexes
+from .database import ping_db, close_db, ensure_indexes, surveys_col, career_archetypes_col
+from .seed import seed_surveys, seed_archetypes
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,8 @@ async def lifespan(app: FastAPI):
     result = await ping_db()
     logger.info("MongoDB connected — ping: %s", result)
     await ensure_indexes()
+    await seed_surveys(surveys_col())
+    await seed_archetypes(career_archetypes_col())
     yield
     # shutdown
     await close_db()
