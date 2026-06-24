@@ -12,11 +12,14 @@ class Settings(BaseSettings):
         "/career_db?authSource=admin&replicaSet=atlas-cel82u-shard-0&tls=true"
     )
     nlp_service_url: str = "http://nlp_service:8001"
-    jobdatapool_api_key: str = ""
+    adzuna_app_id: str = ""
+    adzuna_app_key: str = ""
     sync_interval_hours: int = 6
-    target_country_code: str = "GB"
-    # Rate limit: 30 req / 60 s → 2 s delay between industry queries
-    inter_query_delay_seconds: float = 2.0
+    # Comma-separated lowercase Adzuna country codes, e.g. "gb,us,ro,de"
+    # Adzuna free tier: 250 req/day. Each country × 8 careers = up to 40 req/cycle.
+    target_countries: str = "gb"
+    # 1 s gap between requests keeps well within the free-tier rate limit
+    inter_query_delay_seconds: float = 1.0
     job_stale_days: int = 14
 
 

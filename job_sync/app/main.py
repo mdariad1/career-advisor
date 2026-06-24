@@ -23,9 +23,9 @@ if __name__ == "__main__":
         replace_existing=True,
     )
     logger.info(
-        "Job sync scheduler started — interval: %dh, country: %s",
+        "Job sync scheduler started — interval: %dh, countries: %s",
         settings.sync_interval_hours,
-        settings.target_country_code,
+        settings.target_countries,
     )
     # Run once immediately at startup, then schedule
     sync_job()

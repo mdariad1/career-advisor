@@ -8,8 +8,10 @@ interface Job {
   company: string
   industry: string
   country_code: string
+  location: string
   salary_range: string | null
   skills: string[]
+  redirect_url: string
   synced_at: string
 }
 
@@ -18,7 +20,7 @@ const total = ref(0)
 const loading = ref(true)
 const error = ref('')
 const industryFilter = ref('')
-const countryFilter = ref('')
+const locationFilter = ref('')
 
 async function fetchJobs() {
   loading.value = true
@@ -27,7 +29,7 @@ async function fetchJobs() {
     const { data } = await api.get('/jobs/', {
       params: {
         industry: industryFilter.value || undefined,
-        country_code: countryFilter.value || undefined,
+        country_code: locationFilter.value || undefined,
       },
     })
     jobs.value = data.jobs
@@ -46,7 +48,7 @@ onMounted(fetchJobs)
   <div class="max-w-4xl mx-auto py-10 px-6 space-y-6">
     <div>
       <h1 class="text-xl font-semibold text-neutral-100">Job Listings</h1>
-      <p class="text-sm text-neutral-500 mt-1">Live listings from JobDataPool.</p>
+      <p class="text-sm text-neutral-500 mt-1">Live listings from Adzuna.</p>
     </div>
 
     <!-- Filters -->
@@ -54,14 +56,14 @@ onMounted(fetchJobs)
       <input
         v-model="industryFilter"
         type="text"
-        placeholder="Industry"
+        placeholder="Role or industry (e.g. teacher, software)"
         class="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-indigo-600 transition-colors"
       />
       <input
-        v-model="countryFilter"
+        v-model="locationFilter"
         type="text"
-        placeholder="Country (e.g. GB)"
-        class="w-36 bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-indigo-600 transition-colors"
+        placeholder="Country code (e.g. GB, US)"
+        class="w-48 bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none focus:border-indigo-600 transition-colors"
       />
       <button
         @click="fetchJobs"
@@ -89,12 +91,24 @@ onMounted(fetchJobs)
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
-              <h2 class="font-medium text-neutral-100 truncate">{{ job.title }}</h2>
+              <h2 class="font-medium text-neutral-100 truncate">
+                <a
+                  v-if="job.redirect_url"
+                  :href="job.redirect_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="hover:text-indigo-400 transition-colors"
+                >{{ job.title || 'Untitled Position' }}</a>
+                <span v-else>{{ job.title || 'Untitled Position' }}</span>
+              </h2>
               <p class="text-xs text-neutral-500 mt-0.5">
-                {{ job.company }} · {{ job.industry }}
+                {{ job.company || 'Unknown Company' }} · {{ job.industry.replace(/_/g, ' ') }}
               </p>
             </div>
-            <span class="text-xs text-neutral-600 shrink-0">{{ job.country_code }}</span>
+            <span class="text-xs text-neutral-500 shrink-0 text-right">
+              <span v-if="job.location">{{ job.location }}</span>
+              <span v-else>{{ job.country_code }}</span>
+            </span>
           </div>
 
           <p v-if="job.salary_range" class="text-xs text-neutral-400">{{ job.salary_range }}</p>

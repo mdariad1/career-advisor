@@ -1,6 +1,8 @@
 """Jobs route — paginated query of the local jobs_snapshot cache."""
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Depends, Query
 
 from ..database import jobs_snapshot_col
@@ -21,10 +23,19 @@ async def list_jobs(
 ):
     """Return a paginated slice of the jobs_snapshot cache with optional filters."""
     query: dict = {"is_stale": False}
+    filters = []
+
     if industry:
-        query["industry"] = industry
+        # Match slug ("educator") OR actual job title ("teacher", "software developer")
+        p = {"$regex": re.escape(industry), "$options": "i"}
+        filters.append({"$or": [{"industry": p}, {"title": p}]})
+
     if country_code:
-        query["country_code"] = country_code
+        # Case-insensitive exact match on ISO country code (e.g. "gb" → "GB")
+        filters.append({"country_code": {"$regex": f"^{re.escape(country_code)}$", "$options": "i"}})
+
+    if filters:
+        query["$and"] = filters
 
     col = jobs_snapshot_col()
     total = await col.count_documents(query)

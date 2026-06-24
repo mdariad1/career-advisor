@@ -14,9 +14,7 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-secret"
     jwt_refresh_secret: str = "dev-refresh-secret"
     nlp_service_url: str = "http://nlp_service:8001"
-    jobdatapool_api_key: str = ""
     sync_interval_hours: int = 6
-    target_country_code: str = "GB"
 
     # JWT config
     access_token_expire_minutes: int = 60
