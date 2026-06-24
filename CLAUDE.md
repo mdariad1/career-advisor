@@ -9,7 +9,7 @@ data. Architecture and design decisions are fully documented in chapter3.tex.
 - frontend/     Vue.js + Tailwind CSS (port 5173 in dev)
 - backend/      FastAPI Python, central API orchestrator (port 8000)
 - nlp_service/  FastAPI Python, BERT embedding + SVM classification (port 8001)
-- job_sync/     Python APScheduler, runs every 6h, no HTTP port
+- job_sync/     Python APScheduler, runs every 24h, no HTTP port
 - MongoDB       port 27017, database: career_db
 - All services run in Docker; docker-compose.dev.yml for local development
 
@@ -45,9 +45,9 @@ Labels: analytical, creative, interpersonal, technical, leadership, structured
 ## API route groups
 /auth, /survey, /profile, /recommendations, /feedback, /jobs, /audit
 
-## Environment variables (see .env.example)
+## Environment variables (see .env)
 MONGO_URI, JWT_SECRET, JWT_REFRESH_SECRET, NLP_SERVICE_URL,
-JOBDATAPOOL_API_KEY, SYNC_INTERVAL_HOURS, TARGET_COUNTRY_CODE
+ADZUNA_APP_ID, ADZUNA_APP_KEY, SYNC_INTERVAL_HOURS, TARGET_COUNTRIES
 
 ## Testing
 - Backend: pytest (tests/backend/)
@@ -131,15 +131,35 @@ Use `datetime.now(UTC)` via `default_factory=lambda: datetime.now(UTC)` — neve
     - /analyse combines both in one call (used by backend survey _call_nlp_service)
     - Lifespan pre-loads both models at startup; gracefully warns if classifier not trained
     - nlp_service/.venv uses Python 3.13-compatible pinned versions
-[x] Job sync — APScheduler + JobDataPool API integration implemented
-    - run_sync_cycle(): fetch per-industry from JobDataPool, NLP classify skills, upsert jobs_snapshot, mark stale
-    - Respects inter_query_delay_seconds rate limit and job_stale_days threshold from config
+[x] Job sync — Adzuna API integration implemented
+    - run_sync_cycle(): loops over all configured countries × 8 career archetypes, fetches from Adzuna, NLP-classifies skills, upserts jobs_snapshot, marks stale
+    - Adzuna endpoint: GET /v1/api/jobs/{country}/search/{page}?app_id=&app_key=&what=&category=
+    - Career archetype → Adzuna category+keyword mapping in _CAREER_QUERIES (job_sync/app/sync.py)
+    - Supports all 19 Adzuna countries via TARGET_COUNTRIES (comma-separated, e.g. "gb,us,de")
+    - Rate budget: 19 countries × 8 careers × 1 page × 1 cycle/day = 152 req/day (free tier: 250)
+    - _MAX_PAGES=1 (50 jobs/archetype/country); SYNC_INTERVAL_HOURS=24
+    - Stores: job_id, title, company, industry (career_id slug), country_code, location (display_name), salary_range, skills, raw_skills, redirect_url, is_stale, synced_at
+    - html.unescape() applied to title and company to handle API HTML entities
+    - Respects inter_query_delay_seconds (1s) and job_stale_days (14) from config
 [x] Frontend ↔ backend integration — views wired to real API calls
     - AssessmentView: loads questions from /survey/start; MCQ radio buttons (aptitude); Likert 0-4 buttons (personality)
     - RecommendationsView: unwraps data.recommendations; 404 → generate button; regenerate button
-    - JobsView: unwraps data.jobs from paginated response shape {total, skip, limit, jobs}
+    - JobsView: unwraps data.jobs from paginated response shape {total, skip, limit, jobs}; job title links to redirect_url; location displayed from Adzuna display_name
     - ShapBreakdown: fixed value scaling (contributions are 0–0.5 floats, multiplied by 100 for display)
 [x] NLP SVM classifier training pipeline — app/train.py with 90 hand-crafted labeled examples (15/label)
     - Multi-label training data (6 labels: analytical, creative, interpersonal, technical, leadership, structured)
     - Embeds corpus with MiniLM, fits OneVsRest SVM, saves bundle to models/svm_classifier.joblib
     - `python -m app.train` or `make nlp-train`; conftest auto-trains if model file absent
+[x] Frontend dark mode UI — full Tailwind dark theme applied to all views (commit 4209ef8)
+    - All views (Login, Register, Dashboard, Assessment, Recommendations, Jobs, Audit) use dark neutral palette
+    - Tailwind properly configured via postcss.config.js and tailwind.config.js (content paths fixed)
+    - Vite dev proxy uses VITE_API_TARGET env var (set to http://backend:8000 in docker-compose.dev.yml)
+[x] Auth hardening — JWT access token life increased from 15 → 60 minutes (commit bd5d21e)
+    - Axios client (frontend/src/api/index.ts) has full token refresh interceptor: queues concurrent requests during in-flight refresh, clears session and redirects on refresh failure
+[x] Jobs layer improvements — search fixed and extended (commits b95f28f + session)
+    - Industry filter: case-insensitive partial regex matching industry slug OR job title ($or) — "teacher" matches educator jobs
+    - Country filter: case-insensitive exact ISO code match ("gb" → "GB")
+    - Combined filters use MongoDB $and to compose $or conditions correctly
+[x] Vite/Vitest config split — production build type-check fixed
+    - test block moved from vite.config.ts to vitest.config.ts (imports defineConfig from vitest/config)
+    - vite.config.ts is now purely Vite config; resolves vue-tsc --build TS2769 error caused by vitest bundling its own vite copy
