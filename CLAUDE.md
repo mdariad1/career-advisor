@@ -41,6 +41,8 @@ Labels: analytical, creative, interpersonal, technical, leadership, structured
 - Q&A Dataset: Kaggle (NLP training)
 - OCEAN Big Five: HuggingFace
 - AI Job Market: Kaggle (career taxonomy seed)
+- Tech Layoffs & Hiring Trends 2026: Kaggle (`data/tech_layoffs.csv`, 12,000 rows, synthetic) —
+  drives `career_archetypes.market_demand_seed`, see `data/compute_market_demand.py`
 
 ## API route groups
 /auth, /survey, /profile, /recommendations, /feedback, /jobs, /audit
@@ -163,3 +165,17 @@ Use `datetime.now(UTC)` via `default_factory=lambda: datetime.now(UTC)` — neve
 [x] Vite/Vitest config split — production build type-check fixed
     - test block moved from vite.config.ts to vitest.config.ts (imports defineConfig from vitest/config)
     - vite.config.ts is now purely Vite config; resolves vue-tsc --build TS2769 error caused by vitest bundling its own vite copy
+[x] Market demand from real data — career_archetypes.market_demand_seed derived from tech_layoffs.csv
+    - data/compute_market_demand.py: stdlib-only script, reads tech_layoffs.csv (12,000 rows), writes data/market_demand_scores.json
+    - Per-archetype composite score (weights sum to 1.0): 0.35*hiring_trend + 0.25*job_security_score + 0.20*open_roles + 0.10*salary_budget_change + 0.10*(10-ai_replacement_risk)
+    - Row attribution: primary match via top_hiring_role → career_id (ROLE_MAP); industry → career_id fallback (INDUSTRY_FALLBACK) for archetypes not covered by any role
+    - Dataset is layoffs-biased so raw scores cluster ~0.42-0.47; scaled so data_scientist (highest, 4309 rows) anchors at 0.85, preserving relative order
+    - mechanical_engineer/biomedical_researcher/educator have no dataset signal (non-tech fields) — hand-tuned below the tech cluster (0.68/0.60/0.52)
+    - New `market_demand_source` field per archetype: "tech_layoffs_2026_csv" | "tech_layoffs_2026_csv_industry_proxy" | "hand_tuned"
+    - seed.py::seed_archetypes() now upserts (not insert-only) — refreshes market_demand_seed/market_demand_source on existing docs every app startup, no DB wipe needed
+    - Re-run `python data/compute_market_demand.py` after refreshing the CSV, then copy new values into seed.py::CAREER_ARCHETYPES
+[x] Makefile dev workflow targets — added after a network conflict from mixing prod/dev compose
+    - `make dev-up`: detached dev start with --force-recreate (daily workflow)
+    - `make dev-clean`: tears down both docker-compose.yml and docker-compose.dev.yml (containers + networks) then starts dev fresh — fixes "container not connected to network career-advisor_internal" errors
+    - `make down-all`: stops/removes containers from both compose files without restarting
+    - Root cause of the conflict: `docker compose up` (prod) and `docker compose -f docker-compose.dev.yml up` (dev) both name containers career-advisor-*-1 but define different networks (prod adds an `external` network); running one after the other without a full `down` leaves containers attached to networks the other compose file doesn't know about

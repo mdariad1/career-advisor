@@ -357,7 +357,10 @@ CAREER_ARCHETYPES: list[dict] = [
         "ocean_vector": [0.65, 0.72, 0.45, 0.55, 0.30],
         "nlp_centroid": _ZERO_CENTROID,
         "thematic_labels": ["technical", "analytical", "structured"],
-        "market_demand_seed": 0.88,
+        # Derived from tech_layoffs.csv (6467 rows, top_hiring_role mapping, scaled to anchor
+        # data_scientist at 0.85 — see data/compute_market_demand.py)
+        "market_demand_seed": 0.7611,
+        "market_demand_source": "tech_layoffs_2026_csv",
         "sample_size": 450,
         "source": "theoretical_fallback",
     },
@@ -367,7 +370,9 @@ CAREER_ARCHETYPES: list[dict] = [
         "ocean_vector": [0.75, 0.68, 0.38, 0.50, 0.28],
         "nlp_centroid": _ZERO_CENTROID,
         "thematic_labels": ["analytical", "technical", "structured"],
+        # Top-ranked by dataset (4309 rows, ML Engineer + Data Scientist roles combined)
         "market_demand_seed": 0.85,
+        "market_demand_source": "tech_layoffs_2026_csv",
         "sample_size": 320,
         "source": "theoretical_fallback",
     },
@@ -377,7 +382,9 @@ CAREER_ARCHETYPES: list[dict] = [
         "ocean_vector": [0.82, 0.60, 0.62, 0.72, 0.40],
         "nlp_centroid": _ZERO_CENTROID,
         "thematic_labels": ["creative", "interpersonal", "analytical"],
-        "market_demand_seed": 0.74,
+        # Gaming industry proxy (1712 rows); design-adjacent signal
+        "market_demand_seed": 0.7749,
+        "market_demand_source": "tech_layoffs_2026_csv_industry_proxy",
         "sample_size": 210,
         "source": "theoretical_fallback",
     },
@@ -387,7 +394,9 @@ CAREER_ARCHETYPES: list[dict] = [
         "ocean_vector": [0.70, 0.65, 0.75, 0.68, 0.35],
         "nlp_centroid": _ZERO_CENTROID,
         "thematic_labels": ["leadership", "interpersonal", "analytical"],
-        "market_demand_seed": 0.80,
+        # Derived from tech_layoffs.csv (1224 rows, Product Manager role)
+        "market_demand_seed": 0.7573,
+        "market_demand_source": "tech_layoffs_2026_csv",
         "sample_size": 280,
         "source": "theoretical_fallback",
     },
@@ -397,7 +406,9 @@ CAREER_ARCHETYPES: list[dict] = [
         "ocean_vector": [0.55, 0.78, 0.48, 0.52, 0.30],
         "nlp_centroid": _ZERO_CENTROID,
         "thematic_labels": ["technical", "structured", "analytical"],
-        "market_demand_seed": 0.70,
+        # No dataset coverage (non-tech field) — hand-tuned below tech cluster
+        "market_demand_seed": 0.68,
+        "market_demand_source": "hand_tuned",
         "sample_size": 360,
         "source": "theoretical_fallback",
     },
@@ -407,7 +418,9 @@ CAREER_ARCHETYPES: list[dict] = [
         "ocean_vector": [0.52, 0.80, 0.45, 0.50, 0.38],
         "nlp_centroid": _ZERO_CENTROID,
         "thematic_labels": ["analytical", "structured"],
-        "market_demand_seed": 0.72,
+        # FinTech industry proxy (1689 rows)
+        "market_demand_seed": 0.7649,
+        "market_demand_source": "tech_layoffs_2026_csv_industry_proxy",
         "sample_size": 290,
         "source": "theoretical_fallback",
     },
@@ -417,7 +430,9 @@ CAREER_ARCHETYPES: list[dict] = [
         "ocean_vector": [0.78, 0.75, 0.40, 0.58, 0.35],
         "nlp_centroid": _ZERO_CENTROID,
         "thematic_labels": ["analytical", "technical"],
-        "market_demand_seed": 0.62,
+        # No dataset coverage — hand-tuned below tech cluster
+        "market_demand_seed": 0.60,
+        "market_demand_source": "hand_tuned",
         "sample_size": 180,
         "source": "theoretical_fallback",
     },
@@ -427,7 +442,9 @@ CAREER_ARCHETYPES: list[dict] = [
         "ocean_vector": [0.65, 0.68, 0.72, 0.82, 0.45],
         "nlp_centroid": _ZERO_CENTROID,
         "thematic_labels": ["interpersonal", "leadership", "structured"],
-        "market_demand_seed": 0.58,
+        # No dataset coverage — hand-tuned as lowest-demand in tech-focused market
+        "market_demand_seed": 0.52,
+        "market_demand_source": "hand_tuned",
         "sample_size": 400,
         "source": "theoretical_fallback",
     },
@@ -435,19 +452,34 @@ CAREER_ARCHETYPES: list[dict] = [
 
 
 async def seed_archetypes(col: AsyncIOMotorCollection) -> int:
-    """Insert career archetypes that don't already exist (matched by career_id).
+    """Upsert career archetypes (matched by career_id).
+
+    - New archetypes are inserted in full.
+    - Existing archetypes have market_demand_seed and market_demand_source refreshed
+      so dataset-derived values take effect without a collection wipe.
 
     Returns the number of newly inserted documents.
     """
     from datetime import datetime, UTC
     inserted = 0
     for arch in CAREER_ARCHETYPES:
+        now = datetime.now(UTC)
         existing = await col.find_one({"career_id": arch["career_id"]})
         if existing is None:
-            await col.insert_one({**arch, "updated_at": datetime.now(UTC)})
+            await col.insert_one({**arch, "updated_at": now})
             inserted += 1
+        else:
+            await col.update_one(
+                {"career_id": arch["career_id"]},
+                {"$set": {
+                    "market_demand_seed":   arch["market_demand_seed"],
+                    "market_demand_source": arch.get("market_demand_source", "hand_tuned"),
+                    "updated_at":           now,
+                }},
+            )
     if inserted:
-        logger.info("Seeded %d career archetypes", inserted)
+        logger.info("Seeded %d new career archetypes", inserted)
+    logger.info("Refreshed market_demand_seed for all %d archetypes", len(CAREER_ARCHETYPES))
     return inserted
 
 
