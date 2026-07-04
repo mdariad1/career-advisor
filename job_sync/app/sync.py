@@ -97,18 +97,33 @@ async def _fetch_jobs_for_archetype(
 
 # ── NLP skill normalisation ───────────────────────────────────────────────────
 
-async def _normalise_skills(
+async def _normalise_skills_for_batch(
     client: httpx.AsyncClient,
-    raw_skills: list[str],
+    jobs: list[dict],
 ) -> list[str]:
-    """Classify raw skill strings to thematic labels via NLP /embed + /classify.
+    """Classify a representative sample of skills from an archetype batch.
 
+    Collects up to _SKILL_BATCH unique skill tokens from all jobs in the batch,
+    calls NLP once, and returns labels shared by all jobs in that archetype.
     Falls back to an empty list if the NLP service is unavailable.
     """
-    if not raw_skills:
+    unique_skills: list[str] = []
+    seen: set[str] = set()
+    for job in jobs:
+        desc = (job.get("description") or "").strip()
+        for token in (s.strip() for s in desc.split(",") if s.strip()):
+            if token not in seen:
+                seen.add(token)
+                unique_skills.append(token)
+                if len(unique_skills) >= _SKILL_BATCH:
+                    break
+        if len(unique_skills) >= _SKILL_BATCH:
+            break
+
+    if not unique_skills:
         return []
 
-    text = ", ".join(raw_skills[:_SKILL_BATCH])
+    text = ", ".join(unique_skills)
     try:
         embed_resp = await client.post(
             f"{settings.nlp_service_url}/embed/",
@@ -217,10 +232,10 @@ async def run_sync_cycle() -> None:
 
                 jobs = await _fetch_jobs_for_archetype(http, career, country)
 
+                # One NLP call per archetype batch — labels shared across all jobs in the batch
+                nlp_labels = await _normalise_skills_for_batch(http, jobs)
+
                 for job in jobs:
-                    desc = (job.get("description") or "").strip()
-                    raw_skills = [s.strip() for s in desc.split(",") if s.strip()] if desc else []
-                    nlp_labels = await _normalise_skills(http, raw_skills)
                     await _upsert_job(col, job, career["career_id"], country_code, currency, nlp_labels, now)
                     total_upserted += 1
 
